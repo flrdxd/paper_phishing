@@ -1,0 +1,9 @@
+.venv
+venv/
+.claude/
+__pycache__/
+*.pyc
+*.log
+*.tar.gz
+models/
+data/
