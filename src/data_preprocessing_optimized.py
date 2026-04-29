@@ -25,25 +25,43 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Download NLTK data
+logger.info("Downloading required NLTK data...")
+
+# Download punkt (older versions)
 try:
     nltk.data.find('tokenizers/punkt')
+    logger.info("NLTK punkt already downloaded")
 except LookupError:
-    nltk.download('punkt', quiet=True)
+    logger.info("Downloading NLTK punkt...")
+    nltk.download('punkt', quiet=False)
+    logger.info("NLTK punkt downloaded successfully")
 
+# Download punkt_tab (newer versions)
 try:
     nltk.data.find('tokenizers/punkt_tab')
+    logger.info("NLTK punkt_tab already downloaded")
 except LookupError:
-    nltk.download('punkt_tab', quiet=True)
+    logger.info("Downloading NLTK punkt_tab...")
+    nltk.download('punkt_tab', quiet=False)
+    logger.info("NLTK punkt_tab downloaded successfully")
 
+# Download stopwords
 try:
     nltk.data.find('corpora/stopwords')
+    logger.info("NLTK stopwords already downloaded")
 except LookupError:
-    nltk.download('stopwords', quiet=True)
+    logger.info("Downloading NLTK stopwords...")
+    nltk.download('stopwords', quiet=False)
+    logger.info("NLTK stopwords downloaded successfully")
 
+# Download wordnet (for lemmatization)
 try:
     nltk.data.find('corpora/wordnet')
+    logger.info("NLTK wordnet already downloaded")
 except LookupError:
-    nltk.download('wordnet', quiet=True)
+    logger.info("Downloading NLTK wordnet...")
+    nltk.download('wordnet', quiet=False)
+    logger.info("NLTK wordnet downloaded successfully")
 
 
 class OptimizedDataPreprocessor:
