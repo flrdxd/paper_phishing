@@ -57,7 +57,7 @@ data/
 *.parquet
 
 # Model files (large model weights)
-models/
+/models/
 *.h5
 *.hdf5
 *.keras
