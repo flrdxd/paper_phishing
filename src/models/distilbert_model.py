@@ -292,7 +292,9 @@ class DistilBERTPhishingDetector:
                 best_val_loss = val_loss
                 patience_counter = 0
                 # Save best model
-                torch.save(self.model.state_dict(), os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'distilbert_temp_best.pth'))
+                models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+                os.makedirs(models_dir, exist_ok=True)
+                torch.save(self.model.state_dict(), os.path.join(models_dir, 'distilbert_temp_best.pth'))
             else:
                 patience_counter += 1
                 if patience_counter >= self.early_stopping_patience:
@@ -300,8 +302,9 @@ class DistilBERTPhishingDetector:
                     break
 
         # Load best model
-        self.model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'distilbert_temp_best.pth')))
-        os.remove(os.path.join(os.path.dirname(__file__), '..', '..', 'models', 'distilbert_temp_best.pth'))
+        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+        self.model.load_state_dict(torch.load(os.path.join(models_dir, 'distilbert_temp_best.pth')))
+        os.remove(os.path.join(models_dir, 'distilbert_temp_best.pth'))
 
         self.training_time = time.time() - start_time
         logger.info(f"\nTraining complete in {self.training_time:.2f} seconds ({self.training_time / 60:.2f} minutes)")

@@ -159,6 +159,7 @@ class PhishingDetectionPipeline:
 
         # Save model
         models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+        os.makedirs(models_dir, exist_ok=True)
         model_path = os.path.join(models_dir, 'naive_bayes_model.pkl')
         nb_detector.save_model(model_path)
 
@@ -208,6 +209,7 @@ class PhishingDetectionPipeline:
 
         # Save model
         models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+        os.makedirs(models_dir, exist_ok=True)
         model_path = os.path.join(models_dir, 'dandelion_nb_model.pkl')
         dandelion_nb.save_model(model_path)
 
@@ -257,6 +259,7 @@ class PhishingDetectionPipeline:
 
         # Save model
         models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+        os.makedirs(models_dir, exist_ok=True)
         model_path = os.path.join(models_dir, 'bert_model.pth')
         bert_detector.save_model(model_path)
 
@@ -300,6 +303,7 @@ class PhishingDetectionPipeline:
 
         # Save model
         models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
+        os.makedirs(models_dir, exist_ok=True)
         model_path = os.path.join(models_dir, 'distilbert_model.pth')
         distilbert_detector.save_model(model_path)
 
