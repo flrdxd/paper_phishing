@@ -136,15 +136,15 @@ class PhishingDetectionPipeline:
         logger.info("\nGenerating word clouds...")
         generate_comparative_word_clouds(
             phishing_text, legitimate_text,
-            save_path=os.path.join(plots_dir, 'word_clouds_comparison.png')
+            save_path=os.path.join(PLOTS_DIR, 'word_clouds_comparison.png')
         )
         generate_phishing_word_cloud(
             phishing_text,
-            save_path=os.path.join(plots_dir, 'phishing_word_cloud.png')
+            save_path=os.path.join(PLOTS_DIR, 'phishing_word_cloud.png')
         )
         generate_legitimate_word_cloud(
             legitimate_text,
-            save_path=os.path.join(plots_dir, 'legitimate_word_cloud.png')
+            save_path=os.path.join(PLOTS_DIR, 'legitimate_word_cloud.png')
         )
 
         logger.info("Data preprocessing complete!")
