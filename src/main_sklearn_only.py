@@ -10,25 +10,25 @@ import time
 import pandas as pd
 import logging
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Import path configuration first
+from path_config import PATHS
 
-from src.data_preprocessing import DataPreprocessor
-from src.models.naive_bayes import NaiveBayesPhishingDetector, train_naive_bayes
-from src.models.dandelion_nb import DandelionNaiveBayesDetector, train_dandelion_nb
-from src.utils.evaluation import (
+from data_preprocessing import DataPreprocessor
+from models.naive_bayes import NaiveBayesPhishingDetector, train_naive_bayes
+from models.dandelion_nb import DandelionNaiveBayesDetector, train_dandelion_nb
+from utils.evaluation import (
     compare_models_metrics,
     plot_model_comparison,
     plot_training_time_comparison,
     format_results_table
 )
-from src.utils.visualization import (
+from utils.visualization import (
     generate_phishing_word_cloud,
     generate_legitimate_word_cloud,
     generate_comparative_word_clouds,
     plot_dataset_distribution
 )
-from src.utils.results_exporter import (
+from utils.results_exporter import (
     export_results_to_text,
     export_results_to_json,
     export_results_to_csv,
@@ -36,11 +36,12 @@ from src.utils.results_exporter import (
 )
 
 # Set up logging
+log_file = os.path.join(PATHS['LOGS_DIR'], 'phishing_detection_sklearn.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('phishing_detection_sklearn.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
@@ -64,6 +65,7 @@ class PhishingDetectionPipelineSklearn:
         self.models = {}
         self.results = {}
         self.total_time = None
+        self.PATHS = PATHS
 
     def load_and_preprocess_data(self, force_download=False):
         """
@@ -89,9 +91,7 @@ class PhishingDetectionPipelineSklearn:
         df = self.preprocessor.preprocess_dataframe(df)
 
         # Plot dataset distribution
-        plots_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'plots')
-        os.makedirs(plots_dir, exist_ok=True)
-        plot_dataset_distribution(df, save_path=os.path.join(plots_dir, 'dataset_distribution.png'))
+        plot_dataset_distribution(df, save_path=os.path.join(PATHS['PLOTS_DIR'], 'dataset_distribution.png'))
 
         # Split data for ML models
         X_train_ml, X_test_ml, y_train_ml, y_test_ml = self.preprocessor.split_for_ml(df, test_size=0.3)
@@ -103,15 +103,15 @@ class PhishingDetectionPipelineSklearn:
         logger.info("\nGenerating word clouds...")
         generate_comparative_word_clouds(
             phishing_text, legitimate_text,
-            save_path=os.path.join(plots_dir, 'word_clouds_comparison.png')
+            save_path=os.path.join(PATHS['PLOTS_DIR'], 'word_clouds_comparison.png')
         )
         generate_phishing_word_cloud(
             phishing_text,
-            save_path=os.path.join(plots_dir, 'phishing_word_cloud.png')
+            save_path=os.path.join(PATHS['PLOTS_DIR'], 'phishing_word_cloud.png')
         )
         generate_legitimate_word_cloud(
             legitimate_text,
-            save_path=os.path.join(plots_dir, 'legitimate_word_cloud.png')
+            save_path=os.path.join(PATHS['PLOTS_DIR'], 'legitimate_word_cloud.png')
         )
 
         logger.info("Data preprocessing complete!")
@@ -143,9 +143,7 @@ class PhishingDetectionPipelineSklearn:
         metrics = nb_detector.evaluate(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'naive_bayes_model.pkl')
+        model_path = os.path.join(self.PATHS['MODELS_DIR'], 'naive_bayes_model.pkl')
         nb_detector.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -193,9 +191,7 @@ class PhishingDetectionPipelineSklearn:
         metrics = dandelion_nb.evaluate(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'dandelion_nb_model.pkl')
+        model_path = os.path.join(self.PATHS['MODELS_DIR'], 'dandelion_nb_model.pkl')
         dandelion_nb.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -288,18 +284,15 @@ class PhishingDetectionPipelineSklearn:
         logger.info("-"*60)
 
         # Generate visualizations
-        plots_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'plots')
-        os.makedirs(plots_dir, exist_ok=True)
-
         logger.info("\nGenerating visualizations...")
 
         # Model comparison bar chart
-        plot_model_comparison(comparison_df, save_path=os.path.join(plots_dir, 'model_comparison_sklearn.png'))
+        plot_model_comparison(comparison_df, save_path=os.path.join(self.PATHS['PLOTS_DIR'], 'model_comparison_sklearn.png'))
 
         # Training time comparison
-        plot_training_time_comparison(comparison_df, save_path=os.path.join(plots_dir, 'training_time_comparison_sklearn.png'))
+        plot_training_time_comparison(comparison_df, save_path=os.path.join(self.PATHS['PLOTS_DIR'], 'training_time_comparison_sklearn.png'))
 
-        logger.info(f"Visualizations saved to {plots_dir}")
+        logger.info(f"Visualizations saved to {self.PATHS['PLOTS_DIR']}")
 
     def save_results(self):
         """Save results to multiple formats (TXT, JSON, CSV)."""
@@ -307,15 +300,12 @@ class PhishingDetectionPipelineSklearn:
         logger.info("PHASE 4: SAVING RESULTS")
         logger.info("="*60)
 
-        results_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'results')
-        os.makedirs(results_dir, exist_ok=True)
-
         # Export to all formats
-        export_results_to_text(self.results, os.path.join(results_dir, 'results_summary_sklearn.txt'))
-        export_results_to_json(self.results, os.path.join(results_dir, 'model_results_sklearn.json'))
-        export_results_to_csv(self.results, os.path.join(results_dir, 'model_results_sklearn.csv'))
+        export_results_to_text(self.results, os.path.join(self.PATHS['RESULTS_DIR'], 'results_summary_sklearn.txt'))
+        export_results_to_json(self.results, os.path.join(self.PATHS['RESULTS_DIR'], 'model_results_sklearn.json'))
+        export_results_to_csv(self.results, os.path.join(self.PATHS['RESULTS_DIR'], 'model_results_sklearn.csv'))
 
-        logger.info(f"\nAll results saved to {results_dir}/")
+        logger.info(f"\nAll results saved to {self.PATHS['RESULTS_DIR']}/")
         logger.info("  - results_summary_sklearn.txt (human-readable)")
         logger.info("  - model_results_sklearn.json (machine-readable)")
         logger.info("  - model_results_sklearn.csv (spreadsheet-compatible)")

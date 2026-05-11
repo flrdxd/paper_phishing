@@ -5,7 +5,15 @@ Run this on the server to pinpoint the problematic component
 """
 
 import sys
+import os
 import traceback
+
+# Add project root to path
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+if os.path.join(project_root, 'src') not in sys.path:
+    sys.path.insert(0, os.path.join(project_root, 'src'))
 
 def test_step(description, test_func):
     """Test a single step and report results"""
@@ -132,7 +140,7 @@ def main():
     print("TESTING: Project imports")
     print("="*50)
     try:
-        from src.data_preprocessing import DataPreprocessor
+        from data_preprocessing import DataPreprocessor
         print(f"✓ DataPreprocessor imported")
     except Exception as e:
         print(f"✗ DataPreprocessor FAILED: {type(e).__name__}: {e}")

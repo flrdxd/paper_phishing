@@ -16,6 +16,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.model_selection import train_test_split
 import logging
 
+# Import path configuration
+from path_config import PATHS
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -278,8 +281,6 @@ class BERTPhishingDetector:
 def train_bert_5gb(X_train=None, X_test=None, y_train=None, y_test=None):
     """Convenience function to train BERT optimized for 5GB VRAM."""
     if X_train is None or X_test is None or y_train is None or y_test is None:
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
         from data_preprocessing import DataPreprocessor
 
         logger.info("Loading and preprocessing data...")
@@ -305,8 +306,7 @@ def train_bert_5gb(X_train=None, X_test=None, y_train=None, y_test=None):
     logger.info("="*50)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, 'bert_model_5gb.pth')
+    model_path = os.path.join(PATHS['MODELS_DIR'], 'bert_model_5gb.pth')
     torch.save({
         'model_state_dict': bert_detector.model.state_dict(),
         'tokenizer': bert_detector.tokenizer,

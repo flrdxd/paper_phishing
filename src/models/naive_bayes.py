@@ -15,6 +15,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.model_selection import cross_val_score, StratifiedKFold
 import logging
 
+# Import path configuration
+from path_config import PATHS
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -233,8 +236,6 @@ def train_naive_bayes(X_train=None, X_test=None, y_train=None, y_test=None):
     """
     if X_train is None or X_test is None or y_train is None or y_test is None:
         # If data not provided, load and preprocess
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
         from data_preprocessing import DataPreprocessor
 
         logger.info("Loading and preprocessing data...")
@@ -254,8 +255,7 @@ def train_naive_bayes(X_train=None, X_test=None, y_train=None, y_test=None):
     cv_results = nb_detector.cross_validate(X_train, y_train, cv=5)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, 'naive_bayes_model.pkl')
+    model_path = os.path.join(PATHS['MODELS_DIR'], 'naive_bayes_model.pkl')
     nb_detector.save_model(model_path)
 
     logger.info("\n" + "="*50)

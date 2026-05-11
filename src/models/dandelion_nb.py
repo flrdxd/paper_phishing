@@ -17,6 +17,9 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 import logging
 
+# Import path configuration
+from path_config import PATHS
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -433,8 +436,6 @@ def train_dandelion_nb(X_train=None, X_test=None, y_train=None, y_test=None, pop
     """
     if X_train is None or X_test is None or y_train is None or y_test is None:
         # If data not provided, load and preprocess
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
         from data_preprocessing import DataPreprocessor
 
         logger.info("Loading and preprocessing data...")
@@ -455,8 +456,7 @@ def train_dandelion_nb(X_train=None, X_test=None, y_train=None, y_test=None, pop
     metrics = dandelion_nb.evaluate(X_test, y_test)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, 'dandelion_nb_model.pkl')
+    model_path = os.path.join(PATHS['MODELS_DIR'], 'dandelion_nb_model.pkl')
     dandelion_nb.save_model(model_path)
 
     logger.info("\n" + "="*50)

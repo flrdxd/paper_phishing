@@ -27,6 +27,9 @@ from sklearn.model_selection import train_test_split
 import logging
 import gc
 
+# Import path configuration
+from path_config import PATHS
+
 # Set CUDA memory allocation to avoid fragmentation
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
@@ -303,9 +306,7 @@ class BERTPhishingDetector:
                 best_val_loss = val_loss
                 patience_counter = 0
                 # Save best model
-                models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-                os.makedirs(models_dir, exist_ok=True)
-                torch.save(self.model.state_dict(), os.path.join(models_dir, 'bert_temp_best.pth'))
+                torch.save(self.model.state_dict(), os.path.join(PATHS['MODELS_DIR'], 'bert_temp_best.pth'))
             else:
                 patience_counter += 1
                 if patience_counter >= self.early_stopping_patience:
@@ -313,9 +314,8 @@ class BERTPhishingDetector:
                     break
 
         # Load best model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        self.model.load_state_dict(torch.load(os.path.join(models_dir, 'bert_temp_best.pth')))
-        os.remove(os.path.join(models_dir, 'bert_temp_best.pth'))
+        self.model.load_state_dict(torch.load(os.path.join(PATHS['MODELS_DIR'], 'bert_temp_best.pth')))
+        os.remove(os.path.join(PATHS['MODELS_DIR'], 'bert_temp_best.pth'))
 
         self.training_time = time.time() - start_time
         logger.info(f"\nTraining complete in {self.training_time:.2f} seconds ({self.training_time / 60:.2f} minutes)")
@@ -440,8 +440,6 @@ def train_bert(X_train=None, X_test=None, y_train=None, y_test=None):
     """
     if X_train is None or X_test is None or y_train is None or y_test is None:
         # If data not provided, load and preprocess
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
         from data_preprocessing import DataPreprocessor
 
         logger.info("Loading and preprocessing data...")
@@ -458,8 +456,7 @@ def train_bert(X_train=None, X_test=None, y_train=None, y_test=None):
     metrics = bert_detector.predict(X_test, y_test)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, 'bert_model.pth')
+    model_path = os.path.join(PATHS['MODELS_DIR'], 'bert_model.pth')
     bert_detector.save_model(model_path)
 
     logger.info("\n" + "="*50)

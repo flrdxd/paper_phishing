@@ -16,21 +16,40 @@ import time
 import pandas as pd
 import logging
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-from src.data_preprocessing import DataPreprocessor
-from src.models.naive_bayes import NaiveBayesPhishingDetector, train_naive_bayes
-from src.models.dandelion_nb import DandelionNaiveBayesDetector, train_dandelion_nb
-from src.models.bert_model import BERTPhishingDetector, train_bert
-from src.models.distilbert_model import DistilBERTPhishingDetector, train_distilbert
-from src.utils.evaluation import (
+# Add both script directory and project root to path
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# Set up base directories
+MODELS_DIR = os.path.join(PROJECT_ROOT, 'models')
+PLOTS_DIR = os.path.join(PROJECT_ROOT, 'plots')
+RESULTS_DIR = os.path.join(PROJECT_ROOT, 'results')
+DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+LOGS_DIR = os.path.join(PROJECT_ROOT, 'logs')
+
+# Create directories if they don't exist
+for directory in [MODELS_DIR, PLOTS_DIR, RESULTS_DIR, DATA_DIR, LOGS_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
+# Import modules using relative imports from script directory
+from data_preprocessing import DataPreprocessor
+from models.naive_bayes import NaiveBayesPhishingDetector, train_naive_bayes
+from models.dandelion_nb import DandelionNaiveBayesDetector, train_dandelion_nb
+from models.bert_model import BERTPhishingDetector, train_bert
+from models.distilbert_model import DistilBERTPhishingDetector, train_distilbert
+from utils.evaluation import (
     compare_models_metrics,
     plot_model_comparison,
     plot_training_time_comparison,
     format_results_table
 )
-from src.utils.visualization import (
+from utils.visualization import (
     generate_phishing_word_cloud,
     generate_legitimate_word_cloud,
     generate_comparative_word_clouds,
@@ -40,19 +59,20 @@ from src.utils.visualization import (
     plot_accuracy_vs_efficiency,
     plot_dataset_distribution
 )
-from src.utils.results_exporter import (
+from utils.results_exporter import (
     export_results_to_text,
     export_results_to_json,
     export_results_to_csv,
     export_all_formats
 )
 
-# Set up logging
+# Set up logging with location-independent path
+log_file = os.path.join(LOGS_DIR, 'phishing_detection.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('phishing_detection.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
@@ -101,8 +121,7 @@ class PhishingDetectionPipeline:
         df = self.preprocessor.preprocess_dataframe(df)
 
         # Plot dataset distribution
-        plots_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'plots')
-        plot_dataset_distribution(df, save_path=os.path.join(plots_dir, 'dataset_distribution.png'))
+        plot_dataset_distribution(df, save_path=os.path.join(PLOTS_DIR, 'dataset_distribution.png'))
 
         # Split data for ML models
         X_train_ml, X_test_ml, y_train_ml, y_test_ml = self.preprocessor.split_for_ml(df, test_size=0.3)
@@ -158,9 +177,7 @@ class PhishingDetectionPipeline:
         metrics = nb_detector.evaluate(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'naive_bayes_model.pkl')
+        model_path = os.path.join(MODELS_DIR, 'naive_bayes_model.pkl')
         nb_detector.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -208,9 +225,7 @@ class PhishingDetectionPipeline:
         metrics = dandelion_nb.evaluate(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'dandelion_nb_model.pkl')
+        model_path = os.path.join(MODELS_DIR, 'dandelion_nb_model.pkl')
         dandelion_nb.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -258,9 +273,7 @@ class PhishingDetectionPipeline:
         metrics = bert_detector.predict(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'bert_model.pth')
+        model_path = os.path.join(MODELS_DIR, 'bert_model.pth')
         bert_detector.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -302,9 +315,7 @@ class PhishingDetectionPipeline:
         metrics = distilbert_detector.predict(X_test, y_test)
 
         # Save model
-        models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-        os.makedirs(models_dir, exist_ok=True)
-        model_path = os.path.join(models_dir, 'distilbert_model.pth')
+        model_path = os.path.join(MODELS_DIR, 'distilbert_model.pth')
         distilbert_detector.save_model(model_path)
 
         logger.info("\n" + "-"*50)
@@ -404,30 +415,27 @@ class PhishingDetectionPipeline:
         logger.info("-"*60)
 
         # Generate visualizations
-        plots_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'plots')
-        os.makedirs(plots_dir, exist_ok=True)
-
         logger.info("\nGenerating visualizations...")
 
         # Model comparison bar chart
-        plot_model_comparison(comparison_df, save_path=os.path.join(plots_dir, 'model_comparison.png'))
+        plot_model_comparison(comparison_df, save_path=os.path.join(PLOTS_DIR, 'model_comparison.png'))
 
         # Training time comparison
-        plot_training_time_comparison(comparison_df, save_path=os.path.join(plots_dir, 'training_time_comparison.png'))
+        plot_training_time_comparison(comparison_df, save_path=os.path.join(PLOTS_DIR, 'training_time_comparison.png'))
 
         # Radar chart for metrics
         plot_model_comparison_radar(
             comparison_data,
-            save_path=os.path.join(plots_dir, 'model_radar_chart.png')
+            save_path=os.path.join(PLOTS_DIR, 'model_radar_chart.png')
         )
 
         # Accuracy vs. efficiency
         plot_accuracy_vs_efficiency(
             comparison_data,
-            save_path=os.path.join(plots_dir, 'accuracy_vs_efficiency.png')
+            save_path=os.path.join(PLOTS_DIR, 'accuracy_vs_efficiency.png')
         )
 
-        logger.info(f"Visualizations saved to {plots_dir}")
+        logger.info(f"Visualizations saved to {PLOTS_DIR}")
 
     def save_results(self):
         """Save results to multiple formats (TXT, JSON, CSV)."""
@@ -435,15 +443,12 @@ class PhishingDetectionPipeline:
         logger.info("PHASE 4: SAVING RESULTS")
         logger.info("="*60)
 
-        results_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'results')
-        os.makedirs(results_dir, exist_ok=True)
-
         # Export to all formats
-        export_results_to_text(self.results, os.path.join(results_dir, 'results_summary.txt'))
-        export_results_to_json(self.results, os.path.join(results_dir, 'model_results.json'))
-        export_results_to_csv(self.results, os.path.join(results_dir, 'model_results.csv'))
+        export_results_to_text(self.results, os.path.join(RESULTS_DIR, 'results_summary.txt'))
+        export_results_to_json(self.results, os.path.join(RESULTS_DIR, 'model_results.json'))
+        export_results_to_csv(self.results, os.path.join(RESULTS_DIR, 'model_results.csv'))
 
-        logger.info(f"\nAll results saved to {results_dir}/")
+        logger.info(f"\nAll results saved to {RESULTS_DIR}/")
         logger.info("  - results_summary.txt (human-readable)")
         logger.info("  - model_results.json (machine-readable)")
         logger.info("  - model_results.csv (spreadsheet-compatible)")

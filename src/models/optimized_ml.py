@@ -19,6 +19,9 @@ from sklearn.calibration import CalibratedClassifierCV
 import logging
 import json
 
+# Import path configuration
+from path_config import PATHS
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -383,8 +386,7 @@ def train_optimized_nb(X_train, X_test, y_train, y_test, optimization_strategy='
     cv_results = nb_detector.cross_validate_robust(X_train, y_train, cv_folds=10)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, 'optimized_naive_bayes_model.pkl')
+    model_path = os.path.join(PATHS['MODELS_DIR'], 'optimized_naive_bayes_model.pkl')
     nb_detector.save_model(model_path)
 
     # Generate comprehensive results

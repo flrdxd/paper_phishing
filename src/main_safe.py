@@ -9,12 +9,16 @@ import time
 import traceback
 import logging
 
+# Import path configuration first
+from path_config import PATHS
+
 # Set up logging BEFORE any other imports
+log_file = os.path.join(PATHS['LOGS_DIR'], 'phishing_detection_safe.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('phishing_detection_safe.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
@@ -127,7 +131,7 @@ flush_log()
 # Project imports
 logger.info("Attempting to import project modules...")
 try:
-    from src.data_preprocessing import DataPreprocessor
+    from data_preprocessing import DataPreprocessor
     logger.info("✓ DataPreprocessor imported")
 except Exception as e:
     logger.error(f"✗ DataPreprocessor import failed: {e}")
@@ -135,7 +139,7 @@ except Exception as e:
 flush_log()
 
 try:
-    from src.models.naive_bayes import NaiveBayesPhishingDetector
+    from models.naive_bayes import NaiveBayesPhishingDetector
     logger.info("✓ NaiveBayesPhishingDetector imported")
 except Exception as e:
     logger.error(f"✗ NaiveBayesPhishingDetector import failed: {e}")
@@ -143,7 +147,7 @@ except Exception as e:
 flush_log()
 
 try:
-    from src.models.dandelion_nb import DandelionNaiveBayesDetector
+    from models.dandelion_nb import DandelionNaiveBayesDetector
     logger.info("✓ DandelionNaiveBayesDetector imported")
 except Exception as e:
     logger.error(f"✗ DandelionNaiveBayesDetector import failed: {e}")

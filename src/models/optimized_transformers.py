@@ -25,6 +25,9 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.model_selection import train_test_split
 import logging
 
+# Import path configuration
+from path_config import PATHS
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -488,8 +491,7 @@ def train_optimized_transformers(X_train, X_test, y_train, y_test, limit_dataset
     metrics = detector.evaluate_optimized(X_test, y_test)
 
     # Save model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'models')
-    model_path = os.path.join(models_dir, f'optimized_{model_type}_model.pth')
+    model_path = os.path.join(PATHS['MODELS_DIR'], f'optimized_{model_type}_model.pth')
     detector.save_model(model_path)
 
     logger.info("\n" + "="*60)
@@ -518,9 +520,6 @@ def train_optimized_transformers(X_train, X_test, y_train, y_test, limit_dataset
 
 if __name__ == "__main__":
     # Test with small dataset
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
     from data_preprocessing_optimized import OptimizedDataPreprocessor
 
     logger.info("Loading and preprocessing data...")

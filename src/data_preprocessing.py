@@ -22,6 +22,9 @@ from sklearn.model_selection import train_test_split
 import kagglehub
 import logging
 
+# Import path configuration
+from path_config import PATHS
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -74,7 +77,7 @@ class DataPreprocessor:
         Returns:
             pd.DataFrame: Combined dataset with 'text' and 'label' columns
         """
-        data_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
+        data_dir = PATHS['DATA_DIR']
         os.makedirs(data_dir, exist_ok=True)
 
         phishing_file = os.path.join(data_dir, 'phishing_emails.csv')
