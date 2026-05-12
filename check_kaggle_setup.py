@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""
+Quick Kaggle Setup Checker
+
+Verifica se a API do Kaggle está configurada corretamente
+e se é possível baixar os datasets necessários.
+"""
+
+import sys
+import os
+
+def check_kaggle_setup():
+    """Check if Kaggle API is properly configured."""
+    print("="*60)
+    print("KAGGLE API SETUP CHECKER")
+    print("="*60)
+
+    # Check 1: kaggle module
+    print("\n[CHECK 1] Checking kaggle module...")
+    try:
+        import kaggle
+        print("✓ kaggle module installed")
+        print(f"  Version: {kaggle.__version__ if hasattr(kaggle, '__version__') else 'unknown'}")
+    except ImportError:
+        print("❌ kaggle module NOT installed")
+        print("  Install with: pip install kaggle")
+        return False
+
+    # Check 2: kagglehub module
+    print("\n[CHECK 2] Checking kagglehub module...")
+    try:
+        import kagglehub
+        print("✓ kagglehub module installed")
+    except ImportError:
+        print("❌ kagglehub module NOT installed")
+        print("  Install with: pip install kagglehub")
+        return False
+
+    # Check 3: Kaggle credentials
+    print("\n[CHECK 3] Checking Kaggle credentials...")
+    kaggle_json_path = os.path.expanduser("~/.kaggle/kaggle.json")
+
+    if os.path.exists(kaggle_json_path):
+        print(f"✓ Kaggle credentials found at {kaggle_json_path}")
+
+        # Check permissions
+        stat_info = os.stat(kaggle_json_path)
+        oct_perms = oct(stat_info.st_mode)[-3:]
+        if oct_perms == '600':
+            print(f"✓ Permissions are correct (600)")
+        else:
+            print(f"⚠️  Warning: Permissions are {oct_perms} (should be 600)")
+            print(f"  Fix with: chmod 600 ~/.kaggle/kaggle.json")
+    else:
+        print("❌ Kaggle credentials NOT found")
+        print(f"  Expected at: {kaggle_json_path}")
+        print("\n  How to setup:")
+        print("  1. Go to https://www.kaggle.com/settings")
+        print("  2. Click 'Create New Token' in API section")
+        print("  3. Download kaggle.json")
+        print("  4. Move to ~/.kaggle/kaggle.json")
+        print("  5. Set permissions: chmod 600 ~/.kaggle/kaggle.json")
+        return False
+
+    # Check 4: Test API connection
+    print("\n[CHECK 4] Testing API connection...")
+    try:
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+
+        # Try to list datasets
+        datasets = api.dataset_list(search="phishing", page_size=1)
+        print("✓ API connection successful")
+        print(f"  Found {len(datasets)} phishing-related datasets")
+
+    except Exception as e:
+        print(f"❌ API connection failed")
+        print(f"  Error: {e}")
+        print("\n  Possible causes:")
+        print("  - Invalid credentials in kaggle.json")
+        print("  - Network connection issues")
+        print("  - Kaggle API is down")
+        return False
+
+    # Check 5: Verify required datasets exist
+    print("\n[CHECK 5] Verifying required datasets...")
+    required_datasets = [
+        ("subhajournal/phishingemails", "Phishing Emails Dataset"),
+        ("uciml/sms-spam-collection-dataset", "SMS Spam Collection")
+    ]
+
+    all_found = True
+    for dataset_id, dataset_name in required_datasets:
+        try:
+            # Try to get dataset info
+            dataset_info = api.dataset_view(dataset_id)
+            print(f"✓ Found: {dataset_name}")
+            print(f"  ID: {dataset_id}")
+            print(f"  Title: {dataset_info.title}")
+            print(f"  Size: {dataset_info.total_bytes / 1024 / 1024:.1f} MB")
+        except Exception as e:
+            print(f"❌ NOT found: {dataset_name}")
+            print(f"  ID: {dataset_id}")
+            print(f"  Error: {e}")
+            all_found = False
+
+    if not all_found:
+        print("\n  Some datasets are not accessible. This might be because:")
+        print("  - Dataset IDs changed")
+        print("  - Datasets were removed")
+        print("  - Access restrictions")
+
+    return all_found
+
+
+def check_project_setup():
+    """Check if project is properly set up."""
+    print("\n" + "="*60)
+    print("PROJECT SETUP CHECKER")
+    print("="*60)
+
+    # Check 1: Project structure
+    print("\n[CHECK 1] Checking project structure...")
+    required_dirs = ['src', 'src/models', 'src/utils', 'data', 'models', 'plots', 'results', 'logs']
+    missing_dirs = []
+
+    for dir_name in required_dirs:
+        if os.path.exists(dir_name):
+            print(f"✓ {dir_name}/ exists")
+        else:
+            print(f"❌ {dir_name}/ NOT found")
+            missing_dirs.append(dir_name)
+
+    if missing_dirs:
+        print(f"\n  Missing directories: {', '.join(missing_dirs)}")
+        print("  Create with: mkdir -p " + " ".join(missing_dirs))
+        return False
+
+    # Check 2: Python files
+    print("\n[CHECK 2] Checking required Python files...")
+    required_files = [
+        'src/data_preprocessing.py',
+        'src/path_config.py',
+        'src/models/naive_bayes.py',
+        'src/models/dandelion_nb.py',
+        'src/utils/data_auditor.py',
+        'test_data_quality.py'
+    ]
+
+    missing_files = []
+    for file_path in required_files:
+        if os.path.exists(file_path):
+            print(f"✓ {file_path} exists")
+        else:
+            print(f"❌ {file_path} NOT found")
+            missing_files.append(file_path)
+
+    if missing_files:
+        print(f"\n  Missing files: {', '.join(missing_files)}")
+        return False
+
+    # Check 3: Virtual environment
+    print("\n[CHECK 3] Checking virtual environment...")
+    if 'VIRTUAL_ENV' in os.environ:
+        print(f"✓ Virtual environment active")
+        print(f"  Path: {os.environ['VIRTUAL_ENV']}")
+    else:
+        print("⚠️  Virtual environment NOT active")
+        print("  Activate with: source venv/bin/activate")
+
+    # Check 4: Required packages
+    print("\n[CHECK 4] Checking required packages...")
+    required_packages = [
+        'pandas',
+        'numpy',
+        'scikit-learn',
+        'kagglehub',
+        'nltk',
+        'beautifulsoup4'
+    ]
+
+    missing_packages = []
+    for package in required_packages:
+        try:
+            __import__(package)
+            print(f"✓ {package} installed")
+        except ImportError:
+            print(f"❌ {package} NOT installed")
+            missing_packages.append(package)
+
+    if missing_packages:
+        print(f"\n  Missing packages: {', '.join(missing_packages)}")
+        print("  Install with: pip install " + " ".join(missing_packages))
+        return False
+
+    return True
+
+
+def main():
+    """Main function."""
+    print("\n" + "="*60)
+    print("KAGGLE AND PROJECT SETUP CHECKER")
+    print("="*60)
+    print("\nThis script checks if your environment is ready to download")
+    print("real datasets and train the phishing detection models.")
+
+    # Check Kaggle setup
+    kaggle_ok = check_kaggle_setup()
+
+    # Check project setup
+    project_ok = check_project_setup()
+
+    # Final summary
+    print("\n" + "="*60)
+    print("SUMMARY")
+    print("="*60)
+
+    if kaggle_ok and project_ok:
+        print("\n✅ ALL CHECKS PASSED!")
+        print("\nYour system is ready to:")
+        print("  1. Download real datasets from Kaggle")
+        print("  2. Train models with real data")
+        print("  3. Generate valid research results")
+        print("\nNext steps:")
+        print("  1. Run: python test_data_quality.py")
+        print("  2. Run: python src/main_sklearn_only.py")
+        return 0
+    else:
+        print("\n❌ SOME CHECKS FAILED")
+        print("\nPlease fix the issues above before proceeding.")
+        print("\nFor detailed instructions, see: DATA_SETUP_GUIDE.md")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

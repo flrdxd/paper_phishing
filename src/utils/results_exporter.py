@@ -250,9 +250,14 @@ def export_results_to_csv(results, output_path='results/model_results.csv'):
 
     # Write to CSV
     if csv_data:
-        fieldnames = csv_data[0].keys()
+        # Get all unique fieldnames from all rows to handle different models having different fields
+        fieldnames = set()
+        for row in csv_data:
+            fieldnames.update(row.keys())
+        fieldnames = sorted(fieldnames)
+
         with open(output_path, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, restval='')
             writer.writeheader()
             writer.writerows(csv_data)
 

@@ -119,6 +119,31 @@ class NaiveBayesPhishingDetector:
         # Confusion matrix
         cm = confusion_matrix(y_test, predictions)
 
+        # Calculate security-critical metrics
+        tn, fp, fn, tp = cm.ravel()
+
+        # False Positive Rate (FPR) - legitimate emails incorrectly blocked
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+
+        # False Negative Rate (FNR) - phishing emails incorrectly allowed
+        fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+
+        # True Positive Rate (TPR) - phishing correctly detected
+        tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+        # True Negative Rate (TNR) - legitimate correctly allowed
+        tnr = tn / (tn + fp) if (tn + fp) > 0 else 0
+
+        # For AUC-ROC (simplified version for Naive Bayes)
+        try:
+            from sklearn.metrics import roc_auc_score, roc_curve
+            y_scores = self.model.predict_proba(X_test)[:, 1]  # Probability of phishing class
+            auc_roc = roc_auc_score(y_test, y_scores)
+        except Exception as e:
+            logger.warning(f"Could not calculate AUC-ROC: {e}")
+            auc_roc = None
+            y_scores = None
+
         metrics = {
             'accuracy': accuracy,
             'precision': precision,
@@ -127,13 +152,22 @@ class NaiveBayesPhishingDetector:
             'training_time': self.training_time,
             'inference_time': self.inference_time,
             'confusion_matrix': cm,
-            'classification_report': report
+            'classification_report': report,
+            'security_metrics': {
+                'false_positive_rate': fpr,
+                'false_negative_rate': fnr,
+                'true_positive_rate': tpr,
+                'true_negative_rate': tnr
+            },
+            'auc_roc': auc_roc
         }
 
         logger.info(f"Accuracy: {accuracy:.4f}")
         logger.info(f"Precision: {precision:.4f}")
         logger.info(f"Recall: {recall:.4f}")
         logger.info(f"F1-Score: {f1:.4f}")
+        logger.info(f"False Positive Rate: {fpr:.4f} ({fpr*100:.1f}%)")
+        logger.info(f"False Negative Rate: {fnr:.4f} ({fnr*100:.1f}%)")
 
         return metrics
 
