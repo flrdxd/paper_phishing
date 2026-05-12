@@ -29,7 +29,7 @@ pillow>=9.0.0
 # Data Handling
 tqdm>=4.65.0
 kagglehub>=0.2.0
-kaggle>=1.5.0
+kaggle==1.6.17  # Fixed version for compatibility with authentication
 
 # Web Scraping
 beautifulsoup4>=4.12.0
