@@ -70,7 +70,7 @@ def check_kaggle_setup():
         api.authenticate()
 
         # Try to list datasets
-        datasets = api.dataset_list(search="phishing", page_size=1)
+        datasets = api.dataset_list(search="phishing")
         print("✓ API connection successful")
         print(f"  Found {len(datasets)} phishing-related datasets")
 
