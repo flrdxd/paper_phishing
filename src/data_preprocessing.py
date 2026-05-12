@@ -116,21 +116,105 @@ class DataPreprocessor:
                 dataset_path = os.path.join(path, "Phishing_Email.csv")
                 phishing_df = pd.read_csv(dataset_path)
 
+                logger.info(f"✓ Phishing dataset loaded with columns: {phishing_df.columns.tolist()}")
+                logger.info(f"✓ Phishing dataset shape: {phishing_df.shape}")
+
                 # For legitimate emails, we'll use Enron or similar
                 # Using a publicly available spam dataset that includes ham emails
                 path2 = kagglehub.dataset_download("uciml/sms-spam-collection-dataset")
                 spam_path = os.path.join(path2, "spam.csv")
-                spam_df = pd.read_csv(spam_path, encoding='latin-1')
 
-                # Filter ham messages
-                legitimate_df = spam_df[spam_df['v1'] == 'ham'].sample(n=len(phishing_df), random_state=self.random_state)
+                # Try to read with different encodings and handle various formats
+                try:
+                    spam_df = pd.read_csv(spam_path, encoding='latin-1')
+                except UnicodeDecodeError:
+                    spam_df = pd.read_csv(spam_path, encoding='utf-8')
 
-                # Rename columns to match our format
-                phishing_df = phishing_df.rename(columns={'Email Text': 'text', 'Email Type': 'label'})
-                phishing_df['label'] = phishing_df['label'].map({'Phishing Email': 1, 'Safe Email': 0})
+                logger.info(f"✓ SMS Spam dataset loaded with columns: {spam_df.columns.tolist()}")
+                logger.info(f"✓ SMS Spam dataset shape: {spam_df.shape}")
+                logger.info(f"✓ SMS Spam value counts: {spam_df.iloc[:, 0].value_counts() if len(spam_df.columns) > 0 else 'No columns'}")
+
+                # Filter ham messages - handle different column names
+                ham_column = None
+                text_column = None
+
+                # Try to identify the ham/spam column
+                for col in spam_df.columns:
+                    if 'v1' in col or 'label' in col.lower() or 'type' in col.lower():
+                        ham_column = col
+                    if 'v2' in col or 'message' in col.lower() or 'text' in col.lower():
+                        text_column = col
+
+                if ham_column is None:
+                    # Assume first column is label, second is text
+                    ham_column = spam_df.columns[0]
+                    text_column = spam_df.columns[1] if len(spam_df.columns) > 1 else spam_df.columns[0]
+
+                logger.info(f"✓ Using column '{ham_column}' for ham/spam detection")
+                logger.info(f"✓ Using column '{text_column}' for text content")
+
+                # Filter ham messages (non-spam)
+                ham_messages = spam_df[spam_df[ham_column].str.lower().isin(['ham', 'legitimate', 'safe', 'not spam'])]
+
+                if len(ham_messages) == 0:
+                    # If no ham found, try different labels
+                    ham_messages = spam_df[~spam_df[ham_column].str.lower().isin(['spam', 'phishing', 'malicious'])]
+
+                logger.info(f"✓ Found {len(ham_messages)} ham messages out of {len(spam_df)} total")
+
+                # Use replace=True if we need more samples than available, otherwise use all available
+                if len(ham_messages) >= len(phishing_df):
+                    legitimate_df = ham_messages.sample(n=len(phishing_df), random_state=self.random_state)
+                else:
+                    # Use all available ham messages and sample with replacement if needed
+                    legitimate_df = ham_messages.sample(n=len(phishing_df), random_state=self.random_state, replace=True)
+                    logger.warning(f"⚠️  Using {len(ham_messages)} ham messages with replacement to match {len(phishing_df)} phishing messages")
+
+                # Rename columns to match our format - handle different column names
+                text_col = None
+                label_col = None
+
+                for col in phishing_df.columns:
+                    col_lower = col.lower()
+                    if 'email text' in col_lower or 'text' in col_lower or 'message' in col_lower or 'body' in col_lower:
+                        text_col = col
+                    if 'email type' in col_lower or 'type' in col_lower or 'label' in col_lower or 'class' in col_lower:
+                        label_col = col
+
+                if text_col is None:
+                    text_col = phishing_df.columns[0]  # Fallback to first column
+                if label_col is None:
+                    label_col = phishing_df.columns[1] if len(phishing_df.columns) > 1 else phishing_df.columns[0]
+
+                logger.info(f"✓ Using column '{text_col}' for text content")
+                logger.info(f"✓ Using column '{label_col}' for labels")
+
+                phishing_df = phishing_df.rename(columns={text_col: 'text', label_col: 'label'})
+
+                # Map labels to binary - handle various label formats
+                label_values = phishing_df['label'].unique()
+                logger.info(f"✓ Label values found: {label_values}")
+
+                # Try different mapping strategies
+                try:
+                    phishing_df['label'] = phishing_df['label'].map({
+                        'Phishing Email': 1,
+                        'Safe Email': 0,
+                        'phishing': 1,
+                        'safe': 0,
+                        'spam': 1,
+                        'ham': 0
+                    })
+                except:
+                    # If mapping fails, try to infer from values
+                    phishing_df['label'] = phishing_df['label'].apply(
+                        lambda x: 1 if str(x).lower() in ['phishing email', 'phishing', 'spam'] else 0
+                    )
 
                 # For legitimate dataframe, create proper format
-                legitimate_df = legitimate_df.rename(columns={'v2': 'text'})
+                legitimate_df = legitimate_df.rename(columns={text_column: 'text'})
+                legitimate_df = legitimate_df[[text_column]].copy()
+                legitimate_df.columns = ['text']
                 legitimate_df['label'] = 0
 
                 # Save to files
