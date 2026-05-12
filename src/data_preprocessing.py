@@ -212,7 +212,6 @@ class DataPreprocessor:
                     )
 
                 # For legitimate dataframe, create proper format
-                legitimate_df = legitimate_df.rename(columns={text_column: 'text'})
                 legitimate_df = legitimate_df[[text_column]].copy()
                 legitimate_df.columns = ['text']
                 legitimate_df['label'] = 0
