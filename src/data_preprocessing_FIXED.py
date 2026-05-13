@@ -144,8 +144,7 @@ class DataPreprocessor:
         logger.info(f"✓ {name} structure: {df.shape} with columns {df.columns.tolist()[:5]}...")
 
         # Check 3: No all-NaN columns
-        all_nan_mask = df.isna().all()
-        all_nan_cols = df.columns[all_nan_mask].tolist()
+        all_nan_cols = df.columns[df.isna().all()].tolist()]
         if all_nan_cols:
             logger.error(f"❌ CRITICAL: {name} has completely NaN columns: {all_nan_cols}")
             raise ValueError(f"{name} has invalid columns with all NaN values")
@@ -371,11 +370,10 @@ class DataPreprocessor:
                 if col not in df.columns:
                     raise ValueError(f"{df_name} dataset missing required column '{col}'")
 
-            # Check for NaN in critical columns and clean them
+            # Check for NaN in critical columns
             nan_count = df['text'].isna().sum()
             if nan_count > 0:
-                logger.warning(f"⚠️  {df_name} dataset has {nan_count} NaN values in text column - cleaning...")
-                df['text'] = df['text'].fillna('')
+                raise ValueError(f"{df_name} dataset has {nan_count} NaN values in text column")
 
             # Check for empty strings
             empty_count = (df['text'].str.len() == 0).sum()
