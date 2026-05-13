@@ -424,7 +424,11 @@ class DataPreprocessor:
             return True
 
         # Check 3: Suspicious vocabulary size
-        all_text = ' '.join(phishing_df['text'].astype(str)) + ' ' + ' '.join(legitimate_df['text'].astype(str))
+        # CRITICAL: Handle potential NaN/float values that can cause join to fail
+        phishing_texts = phishing_df['text'].astype(str).fillna('').tolist()
+        legitimate_texts = legitimate_df['text'].astype(str).fillna('').tolist()
+
+        all_text = ' '.join(phishing_texts) + ' ' + ' '.join(legitimate_texts)
         unique_words = len(set(all_text.lower().split()))
 
         if unique_words < 200:
@@ -645,7 +649,9 @@ class DataPreprocessor:
         logger.info(f"Label distribution: {label_counts.to_dict()}")
 
         # Check 5: Vocabulary size
-        all_words = ' '.join(df['text'].astype(str)).lower().split()
+        # CRITICAL: Handle potential NaN/float values that can cause join to fail
+        all_texts = df['text'].astype(str).fillna('').tolist()
+        all_words = ' '.join(all_texts).lower().split()
         unique_words = len(set(all_words))
 
         logger.info(f"Vocabulary size: {unique_words} unique words")
