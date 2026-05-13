@@ -211,10 +211,34 @@ class DataPreprocessor:
                         lambda x: 1 if str(x).lower() in ['phishing email', 'phishing', 'spam'] else 0
                     )
 
+                # CRITICAL: Validate that text_column exists before indexing
+                if text_column not in legitimate_df.columns:
+                    logger.error(f"❌ CRITICAL: Column '{text_column}' not found in legitimate_df!")
+                    logger.error(f"❌ Available columns: {legitimate_df.columns.tolist()}")
+                    raise ValueError(f"Column '{text_column}' not found in legitimate dataframe")
+
                 # For legitimate dataframe, create proper format
                 legitimate_df = legitimate_df[[text_column]].copy()
                 legitimate_df.columns = ['text']
                 legitimate_df['label'] = 0
+
+                logger.info(f"✓ Created legitimate dataframe with columns: {legitimate_df.columns.tolist()}")
+
+                # CRITICAL: Validate labels before saving
+                if 'label' not in phishing_df.columns:
+                    logger.error("❌ CRITICAL: 'label' column not found in phishing_df!")
+                    raise ValueError("Label column missing from phishing dataset")
+
+                if 'label' not in legitimate_df.columns:
+                    logger.error("❌ CRITICAL: 'label' column not found in legitimate_df!")
+                    raise ValueError("Label column missing from legitimate dataset")
+
+                # Validate label values
+                phishing_label_values = phishing_df['label'].unique()
+                legitimate_label_values = legitimate_df['label'].unique()
+
+                logger.info(f"✓ Phishing label values before save: {phishing_label_values}")
+                logger.info(f"✓ Legitimate label values before save: {legitimate_label_values}")
 
                 # Save to files
                 phishing_df.to_csv(phishing_file, index=False)
@@ -233,9 +257,110 @@ class DataPreprocessor:
                 logger.error("   3. Ensure kagglehub is properly installed")
                 raise RuntimeError(f"Failed to download real dataset: {e}. Fallback disabled to prevent artificial accuracy.")
 
-        # Combine datasets
-        phishing_df['label'] = 1
-        legitimate_df['label'] = 0
+        # CRITICAL: DO NOT OVERWRITE LABELS - They were correctly mapped during download
+        # Only validate and ensure consistency
+        if 'label' not in phishing_df.columns:
+            logger.error("❌ CRITICAL: 'label' column missing from cached phishing dataset!")
+            raise ValueError("Label column missing from cached phishing dataset")
+
+        if 'label' not in legitimate_df.columns:
+            logger.error("❌ CRITICAL: 'label' column missing from cached legitimate dataset!")
+            raise ValueError("Label column missing from cached legitimate dataset")
+
+        # Validate label values in cached data
+        cached_phishing_labels = phishing_df['label'].unique()
+        cached_legitimate_labels = legitimate_df['label'].unique()
+
+        logger.info(f"✓ Cached phishing labels: {cached_phishing_labels}")
+        logger.info(f"✓ Cached legitimate labels: {cached_legitimate_labels}")
+
+        # CRITICAL SANITY CHECK: Labels should already be correct (1 for phishing, 0 for legitimate)
+        # If they're not, something is wrong with the cached data
+        if not set(cached_phishing_labels).issubset({0, 1}):
+            logger.error(f"❌ CRITICAL: Invalid labels in cached phishing data: {cached_phishing_labels}")
+            raise ValueError(f"Invalid labels found in cached phishing dataset: {cached_phishing_labels}")
+
+        if not set(cached_legitimate_labels).issubset({0, 1}):
+            logger.error(f"❌ CRITICAL: Invalid labels in cached legitimate data: {cached_legitimate_labels}")
+            raise ValueError(f"Invalid labels found in cached legitimate dataset: {cached_legitimate_labels}")
+
+        # CRITICAL: Comprehensive data validation before combining
+        logger.info("\n" + "="*60)
+        logger.info("CRITICAL DATA VALIDATION")
+        logger.info("="*60)
+
+        # Check 1: Column existence
+        required_columns = ['text', 'label']
+        for col in required_columns:
+            if col not in phishing_df.columns:
+                logger.error(f"❌ CRITICAL: Column '{col}' missing from phishing_df!")
+                raise ValueError(f"Required column '{col}' missing from phishing dataset")
+            if col not in legitimate_df.columns:
+                logger.error(f"❌ CRITICAL: Column '{col}' missing from legitimate_df!")
+                raise ValueError(f"Required column '{col}' missing from legitimate dataset")
+
+        # Check 2: NaN values in critical columns
+        phishing_nan = phishing_df['text'].isna().sum()
+        legitimate_nan = legitimate_df['text'].isna().sum()
+
+        if phishing_nan > 0:
+            logger.error(f"❌ CRITICAL: {phishing_nan} NaN values found in phishing text column!")
+            logger.error(f"❌ Problematic rows: {phishing_df[phishing_df['text'].isna()].index.tolist()[:5]}")
+            raise ValueError(f"Dataset contains {phishing_nan} NaN values in phishing text column")
+
+        if legitimate_nan > 0:
+            logger.error(f"❌ CRITICAL: {legitimate_nan} NaN values found in legitimate text column!")
+            logger.error(f"❌ Problematic rows: {legitimate_df[legitimate_df['text'].isna()].index.tolist()[:5]}")
+            raise ValueError(f"Dataset contains {legitimate_nan} NaN values in legitimate text column")
+
+        # Check 3: Empty text values
+        phishing_empty = (phishing_df['text'].str.len() == 0).sum()
+        legitimate_empty = (legitimate_df['text'].str.len() == 0).sum()
+
+        if phishing_empty > 0:
+            logger.warning(f"⚠️  WARNING: {phishing_empty} empty text samples found in phishing data")
+            logger.warning(f"⚠️  Removing empty samples...")
+            phishing_df = phishing_df[phishing_df['text'].str.len() > 0]
+
+        if legitimate_empty > 0:
+            logger.warning(f"⚠️  WARNING: {legitimate_empty} empty text samples found in legitimate data")
+            logger.warning(f"⚠️  Removing empty samples...")
+            legitimate_df = legitimate_df[legitimate_df['text'].str.len() > 0]
+
+        # Check 4: Data types
+        if not pd.api.types.is_string_dtype(phishing_df['text']):
+            logger.error(f"❌ CRITICAL: Phishing text column has incorrect type: {phishing_df['text'].dtype}")
+            phishing_df['text'] = phishing_df['text'].astype(str)
+            logger.warning(f"⚠️  Converted phishing text to string")
+
+        if not pd.api.types.is_string_dtype(legitimate_df['text']):
+            logger.error(f"❌ CRITICAL: Legitimate text column has incorrect type: {legitimate_df['text'].dtype}")
+            legitimate_df['text'] = legitimate_df['text'].astype(str)
+            logger.warning(f"⚠️  Converted legitimate text to string")
+
+        # Check 5: Dataset balance
+        phishing_count = len(phishing_df)
+        legitimate_count = len(legitimate_df)
+        total_count = phishing_count + legitimate_count
+        balance_ratio = min(phishing_count, legitimate_count) / max(phishing_count, legitimate_count)
+
+        logger.info(f"✓ Dataset balance: {phishing_count} phishing, {legitimate_count} legitimate ({balance_ratio:.1%} ratio)")
+
+        if balance_ratio < 0.1:
+            logger.warning(f"⚠️  WARNING: Extremely imbalanced dataset: {balance_ratio:.1%} ratio")
+            logger.warning(f"⚠️  This may affect model performance")
+
+        # Check 6: Dataset size
+        if phishing_count < 100:
+            logger.error(f"❌ CRITICAL: Phishing dataset too small: {phishing_count} samples")
+            raise ValueError(f"Phishing dataset too small: {phishing_count} samples (minimum 100 required)")
+
+        if legitimate_count < 100:
+            logger.error(f"❌ CRITICAL: Legitimate dataset too small: {legitimate_count} samples")
+            raise ValueError(f"Legitimate dataset too small: {legitimate_count} samples (minimum 100 required)")
+
+        logger.info("✓ All critical data validation checks passed")
+        logger.info("="*60 + "\n")
 
         combined_df = pd.concat([phishing_df[['text', 'label']], legitimate_df[['text', 'label']]], ignore_index=True)
 
@@ -288,8 +413,8 @@ class DataPreprocessor:
             return True
 
         # Check 2: Template repetition (most samples start with same phrase)
-        phishing_first_words = phishing_df['text'].str.split().str[:3].apply(' '.join)
-        legitimate_first_words = legitimate_df['text'].str.split().str[:3].apply(' '.join)
+        phishing_first_words = phishing_df['text'].astype(str).str.split().str[:3].apply(lambda x: ' '.join(x) if isinstance(x, list) else str(x))
+        legitimate_first_words = legitimate_df['text'].astype(str).str.split().str[:3].apply(lambda x: ' '.join(x) if isinstance(x, list) else str(x))
 
         phishing_top_ratio = phishing_first_words.value_counts().iloc[0] / len(phishing_df)
         legitimate_top_ratio = legitimate_first_words.value_counts().iloc[0] / len(legitimate_df)
@@ -347,21 +472,9 @@ class DataPreprocessor:
         # Remove HTML tags
         text = BeautifulSoup(text, 'lxml').get_text()
 
-        # Extract URL features for phishing detection (instead of removing them)
+        # Extract URLs for anonymization (preserving signal but removing specific URLs)
         url_pattern = r'http\S+|www\S+|https\S+'
         urls = re.findall(url_pattern, text, flags=re.MULTILINE)
-
-        # Feature extraction from URLs
-        url_features = {
-            'has_url': len(urls) > 0,
-            'url_count': len(urls),
-            'has_ip_in_url': any(re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', text) for _ in urls),
-            'avg_url_length': np.mean([len(url) for url in urls]) if urls else 0,
-            'max_url_length': max([len(url) for url in urls]) if urls else 0
-        }
-
-        # Check for suspicious TLDs in URLs
-        suspicious_tld_count = sum(1 for url in urls if any(url.endswith(tld) for tld in self.suspicious_tlds))
 
         # Keep URLs for feature extraction, but anonymize them for training
         # This preserves the important signal for phishing detection
@@ -436,17 +549,40 @@ class DataPreprocessor:
         df['processed_text'] = df['cleaned_text'].apply(self.tokenize_and_remove_stopwords)
 
         # Add URL features from temporary storage if available
+        # CRITICAL: Clear temporary features to prevent leakage across different dataframes
         if hasattr(self, '_temp_url_features'):
-            url_features_df = pd.DataFrame([self._temp_url_features] * len(df))
-            # Add URL features as columns
-            df['has_url'] = url_features_df['has_url']
-            df['url_count'] = url_features_df['url_count']
-            df['has_ip_in_url'] = url_features_df['has_ip_in_url']
-            df['avg_url_length'] = url_features_df['avg_url_length']
-            df['max_url_length'] = url_features_df['max_url_length']
-            df['suspicious_tld_count'] = url_features_df['suspicious_tld_count']
+            logger.warning(f"⚠️  WARNING: Clearing temporary URL features to prevent leakage")
+            delattr(self, '_temp_url_features')
 
-            logger.info(f"URL features extracted - has_url: {df['has_url'].sum()}/{len(df)} samples")
+        # Extract URL features properly for each sample
+        logger.info("Extracting URL features for each sample...")
+
+        url_features_list = []
+        for idx, row in df.iterrows():
+            text = str(row['text'])
+            url_pattern = r'http\S+|www\S+|https\S+'
+            urls = re.findall(url_pattern, text, flags=re.MULTILINE)
+
+            url_features = {
+                'has_url': len(urls) > 0,
+                'url_count': len(urls),
+                'has_ip_in_url': any(re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', text) for _ in urls),
+                'avg_url_length': np.mean([len(url) for url in urls]) if urls else 0,
+                'max_url_length': max([len(url) for url in urls]) if urls else 0,
+                'suspicious_tld_count': sum(1 for url in urls if any(url.endswith(tld) for tld in self.suspicious_tlds))
+            }
+            url_features_list.append(url_features)
+
+        # Add URL features as columns
+        url_features_df = pd.DataFrame(url_features_list)
+        df['has_url'] = url_features_df['has_url']
+        df['url_count'] = url_features_df['url_count']
+        df['has_ip_in_url'] = url_features_df['has_ip_in_url']
+        df['avg_url_length'] = url_features_df['avg_url_length']
+        df['max_url_length'] = url_features_df['max_url_length']
+        df['suspicious_tld_count'] = url_features_df['suspicious_tld_count']
+
+        logger.info(f"URL features extracted - has_url: {df['has_url'].sum()}/{len(df)} samples")
 
         # Remove empty texts
         df = df[df['processed_text'].str.len() > 0]
@@ -488,8 +624,8 @@ class DataPreprocessor:
             logger.error(f"❌ {error_msg}")
             raise ValueError(error_msg)
 
-        # Check 3: Template repetition
-        first_words = df['text'].str.split().str[:3].apply(' '.join)
+        # Check 3: Template repetition (most samples start with same phrase)
+        first_words = df['text'].astype(str).str.split().str[:3].apply(lambda x: ' '.join(x) if isinstance(x, list) else str(x))
         top_template_ratio = first_words.value_counts().iloc[0] / len(df)
 
         logger.info(f"Top template coverage: {top_template_ratio:.2%}")
