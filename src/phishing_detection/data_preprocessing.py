@@ -19,6 +19,7 @@ CRITICAL FIXES:
 import os
 import re
 import json
+import time
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -36,6 +37,14 @@ from phishing_detection.path_config import PATHS
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def format_duration(seconds):
+    """Format seconds as HH:MM:SS for progress logs."""
+    seconds = int(max(seconds, 0))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 PAPER_DATASET_ID = "naserabdullahalam/phishing-email-dataset"
 PAPER_EXPECTED_PHISHING = 42891
@@ -100,6 +109,38 @@ class DataPreprocessor:
             '.money', '.cash', '.bank', '.fund', '.trade',
             '.crypto', '.invest', '.stock', '.forex', '.tech'
         }
+
+    def _log_progress(self, phase, completed, total, start_time):
+        """Log progress for long preprocessing steps."""
+        if completed % 5000 != 0 and completed != total:
+            return
+
+        elapsed = time.time() - start_time
+        progress = completed / total
+        eta = (elapsed / progress) - elapsed if progress > 0 else 0
+
+        logger.info(
+            "%s progress: %s/%s rows (%.1f%%), elapsed=%s, eta=%s",
+            phase,
+            completed,
+            total,
+            progress * 100,
+            format_duration(elapsed),
+            format_duration(eta),
+        )
+
+    def _apply_text_step(self, texts, function, phase):
+        """Apply text processing with periodic progress logs."""
+        total = len(texts)
+        start_time = time.time()
+        processed = []
+
+        for index, text in enumerate(texts, start=1):
+            processed.append(function(text))
+            self._log_progress(phase, index, total, start_time)
+
+        logger.info("%s complete in %s", phase, format_duration(time.time() - start_time))
+        return processed
 
     def _safe_csv_read(self, filepath, encoding='utf-8'):
         """
@@ -527,11 +568,19 @@ class DataPreprocessor:
 
         # Clean text
         logger.info("Cleaning text...")
-        df['cleaned_text'] = df['text'].apply(self.clean_text)
+        df['cleaned_text'] = self._apply_text_step(
+            df['text'].tolist(),
+            self.clean_text,
+            "Text cleaning"
+        )
 
         # Tokenize and remove stopwords
         logger.info("Tokenizing and removing stopwords...")
-        df['processed_text'] = df['cleaned_text'].apply(self.tokenize_and_remove_stopwords)
+        df['processed_text'] = self._apply_text_step(
+            df['cleaned_text'].tolist(),
+            self.tokenize_and_remove_stopwords,
+            "Tokenization"
+        )
 
         # Remove empty processed texts
         initial_count = len(df)
