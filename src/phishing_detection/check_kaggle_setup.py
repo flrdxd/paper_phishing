@@ -90,8 +90,7 @@ def check_kaggle_setup():
     # Check 5: Verify required datasets exist
     print("\n[CHECK 5] Verifying required datasets...")
     required_datasets = [
-        ("subhajournal/phishingemails", "Phishing Emails Dataset"),
-        ("uciml/sms-spam-collection-dataset", "SMS Spam Collection")
+        ("naserabdullahalam/phishing-email-dataset", "Paper phishing email dataset")
     ]
 
     all_found = True
@@ -108,10 +107,9 @@ def check_kaggle_setup():
             all_found = False
 
     if not all_found:
-        print("\n  Note: API connection is working, so datasets can be downloaded.")
-        print("  The verification above may fail due to API version differences.")
+        print("\n  The paper dataset must be accessible before training.")
+        return False
 
-    # Return True even if specific dataset check fails, as long as API works
     return True
 
 
@@ -175,7 +173,7 @@ def check_project_setup():
         print(f"  Path: {os.environ['VIRTUAL_ENV']}")
     else:
         print("⚠️  Virtual environment NOT active")
-        print("  Activate with: source venv/bin/activate")
+        print("  Activate with: source .venv/bin/activate")
 
     # Check 4: Required packages
     print("\n[CHECK 4] Checking required packages...")
@@ -185,7 +183,9 @@ def check_project_setup():
         'scikit-learn': 'sklearn',
         'kagglehub': 'kagglehub',
         'nltk': 'nltk',
-        'beautifulsoup4': 'bs4'
+        'beautifulsoup4': 'bs4',
+        'torch': 'torch',
+        'transformers': 'transformers'
     }
 
     missing_packages = []
@@ -202,13 +202,11 @@ def check_project_setup():
 
     if missing_packages:
         print(f"\n  Missing packages: {', '.join(missing_packages)}")
-        print("  Install with: pip install " + " ".join(missing_packages))
+        print("  Install with: uv pip install -r requirements.txt")
         print("  Note: If packages are installed but not detected, try:")
-        print("  1. Ensure virtual environment is activated: source venv/bin/activate")
-        print("  2. Check with: pip list | grep package_name")
-        # Don't return False for missing packages in check mode, just warn
-        print("  ⚠️  Continuing despite missing packages (may affect functionality)")
-        return True  # Changed to not fail on missing packages
+        print("  1. Ensure virtual environment is activated: source .venv/bin/activate")
+        print("  2. Check with: uv pip list | grep package_name")
+        return False
 
     return True
 
@@ -239,8 +237,8 @@ def main():
         print("  2. Train models with real data")
         print("  3. Generate valid research results")
         print("\nNext steps:")
-        print("  1. Run: python -m pytest tests")
-        print("  2. Run: phishing-train-sklearn")
+        print("  1. Run: python3 run.py test")
+        print("  2. Run: python3 run.py train")
         return 0
     else:
         print("\n❌ SOME CHECKS FAILED")

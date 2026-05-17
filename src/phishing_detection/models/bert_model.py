@@ -111,6 +111,7 @@ class BERTPhishingDetector:
         self.model = None
         self.training_time = None
         self.inference_time = None
+        self.mixed_precision = torch.cuda.is_available()
 
         # Training hyperparameters (aggressive for 100+ GB VRAM - matches paper)
         self.learning_rate = 2e-5
@@ -170,7 +171,7 @@ class BERTPhishingDetector:
 
         return train_loader, val_loader, test_loader
 
-    def train_epoch(self, train_loader, optimizer, scheduler):
+    def train_epoch(self, train_loader, optimizer, scheduler, scaler):
         """
         Train for one epoch.
 
@@ -192,17 +193,18 @@ class BERTPhishingDetector:
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
 
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels
-            )
-
-            loss = outputs.loss
+            with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels
+                )
+                loss = outputs.loss
             total_loss += loss.item()
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
 
         return total_loss / len(train_loader)
@@ -259,6 +261,7 @@ class BERTPhishingDetector:
             self: Trained model
         """
         logger.info("Starting BERT training...")
+        logger.info(f"Mixed precision enabled: {self.mixed_precision}")
 
         # Load model
         self.load_model()
@@ -274,6 +277,7 @@ class BERTPhishingDetector:
             num_warmup_steps=int(0.1 * total_steps),
             num_training_steps=total_steps
         )
+        scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision)
 
         # Training loop
         best_val_loss = float('inf')
@@ -287,7 +291,7 @@ class BERTPhishingDetector:
             logger.info(f"\nEpoch {epoch + 1}/{self.epochs}")
 
             # Train
-            train_loss = self.train_epoch(train_loader, optimizer, scheduler)
+            train_loss = self.train_epoch(train_loader, optimizer, scheduler, scaler)
             training_losses.append(train_loss)
 
             # Validate
@@ -362,6 +366,9 @@ class BERTPhishingDetector:
             'test_loss': test_loss,
             'training_time': self.training_time,
             'inference_time': self.inference_time,
+            'device': str(device),
+            'mixed_precision': self.mixed_precision,
+            'epochs_configured': self.epochs,
             'confusion_matrix': cm,
             'classification_report': report
         }

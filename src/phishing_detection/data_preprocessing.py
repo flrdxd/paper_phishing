@@ -18,6 +18,7 @@ CRITICAL FIXES:
 
 import os
 import re
+import json
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -35,6 +36,12 @@ from phishing_detection.path_config import PATHS
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+PAPER_DATASET_ID = "naserabdullahalam/phishing-email-dataset"
+PAPER_EXPECTED_PHISHING = 42891
+PAPER_EXPECTED_LEGITIMATE = 39595
+PAPER_EXPECTED_TOTAL = PAPER_EXPECTED_PHISHING + PAPER_EXPECTED_LEGITIMATE
+PAPER_COUNT_TOLERANCE = 0.20
 
 # Download NLTK data
 logger.info("Downloading required NLTK data...")
@@ -189,6 +196,148 @@ class DataPreprocessor:
 
         return df
 
+    def _find_dataset_csv(self, dataset_dir):
+        """Find the most likely CSV file in a downloaded Kaggle dataset."""
+        csv_files = []
+        for root, _, files in os.walk(dataset_dir):
+            for filename in files:
+                if filename.lower().endswith(".csv"):
+                    csv_files.append(os.path.join(root, filename))
+
+        if not csv_files:
+            raise FileNotFoundError(f"No CSV files found in downloaded dataset: {dataset_dir}")
+
+        csv_files.sort(key=lambda path: os.path.getsize(path), reverse=True)
+        return csv_files[0]
+
+    def _select_text_column(self, df, label_column=None):
+        """Select the most plausible email text column."""
+        preferred_terms = ("email text", "text", "message", "body", "content", "email")
+        for term in preferred_terms:
+            for col in df.columns:
+                if col == label_column:
+                    continue
+                if term in col.lower():
+                    return col
+
+        candidates = [col for col in df.columns if col != label_column]
+        if not candidates:
+            raise ValueError("Could not identify a text column in the paper dataset")
+
+        return max(candidates, key=lambda col: df[col].astype(str).str.len().mean())
+
+    def _select_label_column(self, df):
+        """Select the most plausible phishing/legitimate label column."""
+        preferred_terms = ("email type", "label", "class", "category", "type", "target")
+        for term in preferred_terms:
+            for col in df.columns:
+                if term in col.lower():
+                    return col
+
+        for col in df.columns:
+            values = df[col].dropna().astype(str).str.lower().head(500)
+            matched = values.str.contains("phishing|spam|safe|legitimate|ham|malicious", regex=True).mean()
+            if matched > 0.5:
+                return col
+
+        raise ValueError("Could not identify a label column in the paper dataset")
+
+    def _map_labels_to_binary(self, series):
+        """Map common phishing dataset labels to 1=phishing, 0=legitimate."""
+        normalized = series.astype(str).str.lower().str.strip()
+
+        def map_label(value):
+            if value in {"1", "1.0"}:
+                return 1
+            if value in {"0", "0.0"}:
+                return 0
+            if any(token in value for token in ("phishing", "malicious", "spam")):
+                return 1
+            if any(token in value for token in ("safe", "legitimate", "ham", "not spam", "benign")):
+                return 0
+            return np.nan
+
+        return normalized.apply(map_label)
+
+    def _load_paper_dataset(self, dataset_dir):
+        """Load and normalize the Kaggle dataset referenced by the paper."""
+        dataset_path = self._find_dataset_csv(dataset_dir)
+        raw_df = self._safe_csv_read(dataset_path)
+        self._validate_dataframe_structure(raw_df, "paper dataset")
+
+        label_col = self._select_label_column(raw_df)
+        text_col = self._select_text_column(raw_df, label_col)
+        logger.info(f"✓ Paper dataset columns - text: '{text_col}', label: '{label_col}'")
+
+        df = raw_df[[text_col, label_col]].copy()
+        df.columns = ["text", "label"]
+        df["text"] = df["text"].fillna("").astype(str)
+        df["label"] = self._map_labels_to_binary(df["label"])
+        df = df.dropna(subset=["label"])
+        df["label"] = df["label"].astype(int)
+        df = df[df["text"].str.len() > 0].reset_index(drop=True)
+
+        if len(df) == 0:
+            raise ValueError("Paper dataset normalization produced no usable rows")
+
+        return df, dataset_path
+
+    def _validate_paper_distribution(self, df):
+        """Reject datasets that are too far from the paper's reported counts."""
+        counts = df["label"].value_counts().to_dict()
+        phishing_count = counts.get(1, 0)
+        legitimate_count = counts.get(0, 0)
+        total = len(df)
+
+        logger.info("Paper dataset target distribution:")
+        logger.info(f"  Expected: {PAPER_EXPECTED_PHISHING} phishing, {PAPER_EXPECTED_LEGITIMATE} legitimate")
+        logger.info(f"  Actual:   {phishing_count} phishing, {legitimate_count} legitimate")
+
+        lower_total = PAPER_EXPECTED_TOTAL * (1 - PAPER_COUNT_TOLERANCE)
+        upper_total = PAPER_EXPECTED_TOTAL * (1 + PAPER_COUNT_TOLERANCE)
+        if total < lower_total or total > upper_total:
+            raise ValueError(
+                f"Dataset total ({total}) is too far from the paper total "
+                f"({PAPER_EXPECTED_TOTAL}). Check the Kaggle source."
+            )
+
+        for name, actual, expected in (
+            ("phishing", phishing_count, PAPER_EXPECTED_PHISHING),
+            ("legitimate", legitimate_count, PAPER_EXPECTED_LEGITIMATE),
+        ):
+            lower = expected * (1 - PAPER_COUNT_TOLERANCE)
+            upper = expected * (1 + PAPER_COUNT_TOLERANCE)
+            if actual < lower or actual > upper:
+                raise ValueError(
+                    f"Dataset {name} count ({actual}) is too far from the paper count ({expected})."
+                )
+
+    def _write_dataset_metadata(self, df, source_path):
+        """Save dataset provenance for reproducibility."""
+        metadata = {
+            "dataset_id": PAPER_DATASET_ID,
+            "source_path": source_path,
+            "expected_counts": {
+                "phishing": PAPER_EXPECTED_PHISHING,
+                "legitimate": PAPER_EXPECTED_LEGITIMATE,
+                "total": PAPER_EXPECTED_TOTAL,
+            },
+            "actual_counts": {
+                "phishing": int((df["label"] == 1).sum()),
+                "legitimate": int((df["label"] == 0).sum()),
+                "total": int(len(df)),
+            },
+            "random_state": self.random_state,
+            "max_features": self.max_features,
+            "label_mapping": {"phishing": 1, "legitimate": 0},
+        }
+
+        output_path = os.path.join(PATHS["RESULTS_DIR"], "dataset_metadata.json")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w") as file:
+            json.dump(metadata, file, indent=4)
+        logger.info(f"✓ Dataset metadata saved to {output_path}")
+
     def download_dataset(self, force_download=False):
         """
         Download phishing email dataset from Kaggle with robust error handling.
@@ -199,199 +348,55 @@ class DataPreprocessor:
         data_dir = PATHS['DATA_DIR']
         os.makedirs(data_dir, exist_ok=True)
 
-        phishing_file = os.path.join(data_dir, 'phishing_emails.csv')
-        legitimate_file = os.path.join(data_dir, 'legitimate_emails.csv')
+        paper_file = os.path.join(data_dir, 'paper_phishing_dataset.csv')
 
         # Download or use cache
-        if not force_download and os.path.exists(phishing_file) and os.path.exists(legitimate_file):
+        if not force_download and os.path.exists(paper_file):
             logger.info("Dataset already exists. Skipping download.")
             logger.warning("⚠️  WARNING: Using cached dataset. Use force_download=True to re-download.")
 
             try:
-                phishing_df = self._safe_csv_read(phishing_file)
-                legitimate_df = self._safe_csv_read(legitimate_file)
-
-                # CRITICAL: Validate cached data structure
-                self._validate_dataframe_structure(phishing_df, "cached phishing dataset")
-                self._validate_dataframe_structure(legitimate_df, "cached legitimate dataset")
-
-                # Validate required columns
-                required_cols = ['text', 'label']
-                for col in required_cols:
-                    if col not in phishing_df.columns:
-                        raise ValueError(f"Required column '{col}' missing from cached phishing dataset")
-                    if col not in legitimate_df.columns:
-                        raise ValueError(f"Required column '{col}' missing from cached legitimate dataset")
-
+                combined_df = self._safe_csv_read(paper_file)
+                self._validate_dataframe_structure(combined_df, "cached paper dataset")
+                self._validate_paper_distribution(combined_df)
             except Exception as e:
                 logger.error(f"❌ CRITICAL: Failed to load cached dataset: {e}")
                 logger.error("❌ Deleting corrupted cache files...")
-                os.remove(phishing_file)
-                os.remove(legitimate_file)
+                os.remove(paper_file)
                 logger.info("✓ Cache files deleted, will download fresh data")
                 force_download = True
 
-        if force_download or not os.path.exists(phishing_file) or not os.path.exists(legitimate_file):
-            logger.info("Downloading dataset from Kaggle...")
+        if force_download or not os.path.exists(paper_file):
+            logger.info(f"Downloading paper dataset from Kaggle: {PAPER_DATASET_ID}")
 
             try:
-                # Download phishing email dataset
-                logger.info("Downloading phishing emails dataset...")
-                path = kagglehub.dataset_download("subhajournal/phishingemails")
-                dataset_path = os.path.join(path, "Phishing_Email.csv")
-                phishing_df = self._safe_csv_read(dataset_path)
-
-                self._validate_dataframe_structure(phishing_df, "phishing dataset")
-
-                # Download legitimate emails dataset
-                logger.info("Downloading legitimate emails dataset...")
-                path2 = kagglehub.dataset_download("uciml/sms-spam-collection-dataset")
-                spam_path = os.path.join(path2, "spam.csv")
-                spam_df = self._safe_csv_read(spam_path)
-
-                self._validate_dataframe_structure(spam_df, "SMS spam dataset")
-
-                # CRITICAL: Identify columns automatically and robustly
-                ham_column = None
-                text_column = None
-
-                for col in spam_df.columns:
-                    col_lower = col.lower()
-                    if 'v1' in col or 'label' in col_lower or 'type' in col_lower:
-                        ham_column = col
-                    if 'v2' in col or 'message' in col_lower or 'text' in col_lower:
-                        text_column = col
-
-                # Fallback if automatic detection failed
-                if ham_column is None:
-                    ham_column = spam_df.columns[0]
-                if text_column is None:
-                    text_column = spam_df.columns[1] if len(spam_df.columns) > 1 else spam_df.columns[0]
-
-                logger.info(f"✓ Identified columns - ham/spam: '{ham_column}', text: '{text_column}'")
-
-                # CRITICAL: Safe filtering with NaN handling
-                spam_df[ham_column] = spam_df[ham_column].fillna('').astype(str)
-
-                # Filter ham messages (non-spam)
-                ham_labels = ['ham', 'legitimate', 'safe', 'not spam']
-                ham_mask = spam_df[ham_column].str.lower().isin(ham_labels)
-                ham_messages = spam_df[ham_mask].copy()
-
-                if len(ham_messages) == 0:
-                    # Alternative filtering - exclude spam
-                    spam_labels = ['spam', 'phishing', 'malicious']
-                    ham_mask = ~spam_df[ham_column].str.lower().isin(spam_labels)
-                    ham_messages = spam_df[ham_mask].copy()
-                    logger.warning(f"⚠️  No ham found with primary labels, used alternative filtering")
-
-                logger.info(f"✓ Found {len(ham_messages)} legitimate messages out of {len(spam_df)} total")
-
-                # CRITICAL: Check we have enough data
-                if len(ham_messages) < 10:
-                    raise ValueError(f"Insufficient legitimate messages: {len(ham_messages)} (minimum 10 required)")
-
-                # Sample to match phishing dataset size
-                phishing_count = len(phishing_df)
-                legit_count = len(ham_messages)
-
-                logger.info(f"✓ Dataset sizes - Phishing: {phishing_count}, Legitimate: {legit_count}")
-
-                if legit_count >= phishing_count:
-                    legitimate_df = ham_messages.sample(n=phishing_count, random_state=self.random_state)
-                else:
-                    legitimate_df = ham_messages.sample(n=phishing_count, random_state=self.random_state, replace=True)
-                    logger.warning(f"⚠️  Using {legit_count} legitimate messages with replacement to match {phishing_count} phishing messages")
-
-                # CRITICAL: Clean and rename columns safely
-                legitimate_df = legitimate_df[[text_column]].copy()
-                legitimate_df.columns = ['text']
-                legitimate_df['label'] = 0
-
-                logger.info(f"✓ Created legitimate dataset with {len(legitimate_df)} samples")
-
-                # Process phishing dataset
-                # Identify text and label columns
-                text_col = None
-                label_col = None
-
-                for col in phishing_df.columns:
-                    col_lower = col.lower()
-                    if 'email text' in col_lower or 'text' in col_lower or 'message' in col_lower:
-                        text_col = col
-                    if 'email type' in col_lower or 'type' in col_lower or 'label' in col_lower:
-                        label_col = col
-
-                if text_col is None:
-                    text_col = phishing_df.columns[0]
-                if label_col is None:
-                    label_col = phishing_df.columns[1] if len(phishing_df.columns) > 1 else phishing_df.columns[0]
-
-                logger.info(f"✓ Identified phishing columns - text: '{text_col}', label: '{label_col}'")
-
-                # Rename and clean
-                phishing_df = phishing_df[[text_col, label_col]].copy()
-                phishing_df.columns = ['text', 'label']
-
-                # CRITICAL: Safe label mapping with comprehensive error handling
-                phishing_df['label'] = phishing_df['label'].astype(str).str.lower()
-
-                # Map common phishing labels to 1
-                phishing_indicators = ['phishing email', 'phishing', 'spam', 'malicious', '1']
-                phishing_df['label'] = phishing_df['label'].apply(
-                    lambda x: 1 if any(indicator in x for indicator in phishing_indicators) else 0
-                )
-
-                # Validate mapping worked
-                label_dist = phishing_df['label'].value_counts()
-                logger.info(f"✓ Phishing label distribution: {label_dist.to_dict()}")
-
-                if 1 not in label_dist.index:
-                    raise ValueError(f"Failed to map phishing labels - no phishing samples found")
-
-                # Save to cache
-                phishing_df.to_csv(phishing_file, index=False)
-                legitimate_df.to_csv(legitimate_file, index=False)
+                dataset_dir = kagglehub.dataset_download(PAPER_DATASET_ID)
+                combined_df, source_path = self._load_paper_dataset(dataset_dir)
+                self._validate_paper_distribution(combined_df)
+                combined_df.to_csv(paper_file, index=False)
+                self._write_dataset_metadata(combined_df, source_path)
 
                 logger.info(f"✓ Dataset downloaded and cached to {data_dir}")
 
             except Exception as e:
                 logger.error(f"❌ CRITICAL: Error downloading dataset: {e}")
-                raise RuntimeError(f"Failed to download real dataset: {e}")
+                raise RuntimeError(f"Failed to download paper dataset: {e}")
 
         # CRITICAL: Final comprehensive validation before returning
         logger.info("\n" + "="*60)
         logger.info("FINAL DATA VALIDATION")
         logger.info("="*60)
 
-        # Check both dataframes
-        for df_name, df in [("Phishing", phishing_df), ("Legitimate", legitimate_df)]:
-            # Check required columns
-            for col in ['text', 'label']:
-                if col not in df.columns:
-                    raise ValueError(f"{df_name} dataset missing required column '{col}'")
+        for col in ['text', 'label']:
+            if col not in combined_df.columns:
+                raise ValueError(f"Paper dataset missing required column '{col}'")
 
-            # Check for NaN in critical columns and clean them
-            nan_count = df['text'].isna().sum()
-            if nan_count > 0:
-                logger.warning(f"⚠️  {df_name} dataset has {nan_count} NaN values in text column - cleaning...")
-                df['text'] = df['text'].fillna('')
+        combined_df['text'] = combined_df['text'].fillna('').astype(str)
+        combined_df = combined_df[combined_df['text'].str.len() > 0].reset_index(drop=True)
+        combined_df['label'] = combined_df['label'].astype(int)
 
-            # Check for empty strings
-            empty_count = (df['text'].str.len() == 0).sum()
-            if empty_count > 0:
-                logger.warning(f"⚠️  {df_name} dataset has {empty_count} empty text samples")
-                df = df[df['text'].str.len() > 0].reset_index(drop=True)
-
-            # Check label values
-            unique_labels = df['label'].unique()
-            if not set(unique_labels).issubset({0, 1}):
-                raise ValueError(f"{df_name} dataset has invalid labels: {unique_labels}")
-
-            logger.info(f"✓ {df_name} validation passed - {len(df)} samples, labels: {unique_labels}")
-
-        # Combine datasets
-        combined_df = pd.concat([phishing_df[['text', 'label']], legitimate_df[['text', 'label']]], ignore_index=True)
+        if not set(combined_df['label'].unique()).issubset({0, 1}):
+            raise ValueError(f"Paper dataset has invalid labels: {combined_df['label'].unique()}")
 
         # Remove duplicates
         initial_count = len(combined_df)
@@ -414,6 +419,8 @@ class DataPreprocessor:
         # Sanity check for realistic accuracy
         if final_phishing == 0 or final_legitimate == 0:
             raise ValueError("Dataset contains only one class - cannot train meaningful model")
+        self._validate_paper_distribution(combined_df)
+        self._write_dataset_metadata(combined_df, paper_file)
 
         logger.info("✓ All data validation checks passed")
         logger.info("="*60 + "\n")

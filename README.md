@@ -1,19 +1,30 @@
 # Phishing Email Detection
 
-Python package for phishing email detection. The maintained default workflow is
-scikit-learn first; BERT/DistilBERT remains optional.
+Research project for reproducing the model comparison from
+`docs/Artigo_Phishing.pdf`.
+
+The training flow compares all models discussed in the paper:
+
+- Naive Bayes
+- Naive Bayes + Dandelion optimization
+- BERT
+- DistilBERT
+
+The default dataset is the Kaggle dataset referenced by the paper:
+`naserabdullahalam/phishing-email-dataset`. The pipeline validates that the
+class distribution is close to the paper's reported 42,891 phishing and 39,595
+legitimate emails before training.
 
 ## Layout
 
 ```text
 .
 ├── README.md
+├── run.py
 ├── pyproject.toml
 ├── requirements.txt
-├── requirements-transformers.txt
 ├── docs/
 ├── notebooks/
-├── scripts/
 ├── src/phishing_detection/
 ├── tests/
 └── .artifacts/              # generated locally, ignored by git
@@ -25,10 +36,10 @@ under `.artifacts/` instead of polluting the repository root.
 ## Setup
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+uv pip install -e .
 ```
 
 Configure Kaggle credentials:
@@ -42,30 +53,29 @@ chmod 600 ~/.kaggle/kaggle.json
 Validate the project:
 
 ```bash
-phishing-check-setup
-phishing-test-data-quality
+python3 run.py check
+python3 run.py test
 ```
 
 ## Run
 
-Recommended sklearn pipeline:
+Run the full paper reproduction pipeline:
 
 ```bash
-phishing-train-sklearn
+python3 run.py
 ```
 
-Optional full transformer pipeline:
+Equivalent explicit command:
 
 ```bash
-pip install -r requirements-transformers.txt
-phishing-train-full
+python3 run.py train
 ```
 
-Interactive helper:
+The training step can be slow because it fine-tunes BERT and DistilBERT. A GPU
+is strongly recommended for results close to the paper.
 
-```bash
-scripts/setup_and_run.sh
-```
+Run metadata is saved under `.artifacts/results/`, including dataset
+provenance, class counts, split policy, model parameters and hardware details.
 
 ## Data Quality
 
@@ -76,7 +86,7 @@ accuracy.
 Manual quality check:
 
 ```bash
-phishing-test-data-quality
+python3 run.py test
 ```
 
 ## References

@@ -32,3 +32,12 @@ cloudpickle>=2.2.0
 
 # Tests and local validation
 pytest>=8.0.0
+
+# Transformer models used by the paper reproduction pipeline
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.14.0
+accelerate>=0.20.0
+tokenizers>=0.13.0
+huggingface-hub>=0.15.0
+safetensors>=0.3.0

@@ -182,7 +182,10 @@ def export_results_to_json(results, output_path=None):
             'recall': float(value.get('recall', 0)),
             'f1_score': float(value.get('f1_score', 0)),
             'training_time': float(value.get('training_time', 0)),
-            'inference_time': float(value.get('inference_time', 0))
+            'inference_time': float(value.get('inference_time', 0)),
+            'device': value.get('device'),
+            'mixed_precision': value.get('mixed_precision'),
+            'epochs_configured': value.get('epochs_configured')
         }
 
         # Add optional fields

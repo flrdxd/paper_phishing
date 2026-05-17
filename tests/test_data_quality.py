@@ -196,18 +196,16 @@ def test_cached_dataset_detection():
     from phishing_detection.path_config import PATHS
 
     data_dir = PATHS['DATA_DIR']
-    phishing_file = os.path.join(data_dir, 'phishing_emails.csv')
-    legitimate_file = os.path.join(data_dir, 'legitimate_emails.csv')
+    paper_file = os.path.join(data_dir, 'paper_phishing_dataset.csv')
 
-    if os.path.exists(phishing_file) and os.path.exists(legitimate_file):
-        logger.info("Found cached dataset files")
-        phishing_df = pd.read_csv(phishing_file)
-        legitimate_df = pd.read_csv(legitimate_file)
+    if os.path.exists(paper_file):
+        logger.info("Found cached paper dataset file")
+        cached_df = pd.read_csv(paper_file)
 
-        logger.info(f"Phishing samples: {len(phishing_df)}")
-        logger.info(f"Legitimate samples: {len(legitimate_df)}")
+        logger.info(f"Cached samples: {len(cached_df)}")
+        if 'label' in cached_df.columns:
+            logger.info(f"Label distribution: {cached_df['label'].value_counts().to_dict()}")
 
-        cached_df = pd.concat([phishing_df, legitimate_df], ignore_index=True)
         results = DataAuditor().audit_dataset(cached_df, "Cached dataset")
         is_synthetic = results['risk_level'] == 'CRITICAL'
 
@@ -215,8 +213,7 @@ def test_cached_dataset_detection():
             logger.error("❌ CRITICAL: Cached dataset is SYNTHETIC!")
             logger.error("This will cause artificial accuracy.")
             logger.error("Delete cache files:")
-            logger.error(f"  rm {phishing_file}")
-            logger.error(f"  rm {legitimate_file}")
+            logger.error(f"  rm {paper_file}")
         else:
             logger.info("✓ Cached dataset appears to be real")
     else:

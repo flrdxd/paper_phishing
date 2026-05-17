@@ -12,6 +12,8 @@ This script orchestrates the complete pipeline:
 
 import os
 import time
+import json
+import platform
 import pandas as pd
 import logging
 
@@ -350,10 +352,10 @@ class PhishingDetectionPipeline:
         # Phase 3: Compare results
         self.compare_and_visualize_results()
 
+        self.total_time = time.time() - start_time
+
         # Phase 4: Save results
         self.save_results()
-
-        self.total_time = time.time() - start_time
 
         logger.info("\n" + "="*60)
         logger.info("PIPELINE COMPLETE")
@@ -425,11 +427,56 @@ class PhishingDetectionPipeline:
         export_results_to_text(self.results, os.path.join(PATHS['RESULTS_DIR'], 'results_summary.txt'))
         export_results_to_json(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.json'))
         export_results_to_csv(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.csv'))
+        self.save_run_metadata()
 
         logger.info(f"\nAll results saved to {PATHS['RESULTS_DIR']}/")
         logger.info("  - results_summary.txt (human-readable)")
         logger.info("  - model_results.json (machine-readable)")
         logger.info("  - model_results.csv (spreadsheet-compatible)")
+
+    def save_run_metadata(self):
+        """Save run configuration and hardware metadata."""
+        try:
+            import torch
+
+            cuda_available = torch.cuda.is_available()
+            device = "cuda" if cuda_available else "cpu"
+            gpu_name = torch.cuda.get_device_name(0) if cuda_available else None
+        except Exception:
+            cuda_available = False
+            device = "unknown"
+            gpu_name = None
+
+        metadata = {
+            "paper": "Optimizing Phishing Detection: Comparative Analysis of Lightweight Machine Learning and Transformer Models",
+            "random_state": self.random_state,
+            "max_features": self.max_features,
+            "splits": {
+                "ml_train_test": "70/30 stratified",
+                "transformer_train_test": "80/20 stratified",
+                "transformer_train_validation": "80/20 stratified from transformer training split",
+            },
+            "models": {
+                "naive_bayes": {"alpha": 1.0, "fit_prior": True},
+                "dandelion_nb": {"population_size": 20, "max_iter": 50},
+                "bert": {"model_name": "bert-base-uncased", "max_length": 512, "learning_rate": 2e-5, "batch_size": 16, "eval_batch_size": 64, "epochs": 10},
+                "distilbert": {"model_name": "distilbert-base-uncased", "max_length": 512, "learning_rate": 3e-5, "batch_size": 16, "eval_batch_size": 64, "epochs": 10},
+            },
+            "hardware": {
+                "platform": platform.platform(),
+                "python": platform.python_version(),
+                "device": device,
+                "cuda_available": cuda_available,
+                "gpu_name": gpu_name,
+            },
+            "total_time_seconds": self.total_time,
+        }
+
+        output_path = os.path.join(PATHS['RESULTS_DIR'], 'run_metadata.json')
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w') as file:
+            json.dump(metadata, file, indent=4)
+        logger.info(f"Run metadata saved to {output_path}")
 
 
 def main():
