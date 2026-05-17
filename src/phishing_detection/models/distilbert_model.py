@@ -38,6 +38,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 logger.info(f"Using device: {device}")
 
 
+def format_duration(seconds):
+    """Format seconds as HH:MM:SS for progress logs."""
+    seconds = int(max(seconds, 0))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 class EmailDataset(Dataset):
     """Dataset class for email texts."""
 
@@ -112,6 +120,50 @@ class DistilBERTPhishingDetector:
         torch.manual_seed(random_state)
         np.random.seed(random_state)
 
+    def _log_progress(
+        self,
+        phase,
+        batch_idx,
+        total_batches,
+        total_loss,
+        start_time,
+        progress_offset=0,
+        progress_total=None,
+        progress_start_time=None,
+    ):
+        """Log periodic batch progress with elapsed time and ETA."""
+        completed_batches = batch_idx + 1
+        if completed_batches % 50 != 0 and completed_batches != total_batches:
+            return
+
+        elapsed = time.time() - start_time
+        progress = completed_batches / total_batches
+        eta = (elapsed / progress) - elapsed if progress > 0 else 0
+        avg_loss = total_loss / completed_batches
+
+        total_eta_text = ""
+        if progress_total and progress_start_time:
+            total_completed = progress_offset + completed_batches
+            total_elapsed = time.time() - progress_start_time
+            total_progress = total_completed / progress_total
+            total_eta = (total_elapsed / total_progress) - total_elapsed if total_progress > 0 else 0
+            total_eta_text = (
+                f", total={total_completed}/{progress_total} "
+                f"({total_progress * 100:.1f}%), total_eta={format_duration(total_eta)}"
+            )
+
+        logger.info(
+            "DistilBERT %s progress: %s/%s batches (%.1f%%), loss=%.4f, elapsed=%s, phase_eta=%s%s",
+            phase,
+            completed_batches,
+            total_batches,
+            progress * 100,
+            avg_loss,
+            format_duration(elapsed),
+            format_duration(eta),
+            total_eta_text,
+        )
+
     def load_model(self):
         """Load pre-trained DistilBERT model and tokenizer."""
         logger.info(f"Loading DistilBERT model: {self.model_name}")
@@ -160,7 +212,16 @@ class DistilBERTPhishingDetector:
 
         return train_loader, val_loader, test_loader
 
-    def train_epoch(self, train_loader, optimizer, scheduler, scaler):
+    def train_epoch(
+        self,
+        train_loader,
+        optimizer,
+        scheduler,
+        scaler,
+        progress_offset=0,
+        progress_total=None,
+        progress_start_time=None,
+    ):
         """
         Train for one epoch.
 
@@ -174,6 +235,8 @@ class DistilBERTPhishingDetector:
         """
         self.model.train()
         total_loss = 0
+        total_batches = len(train_loader)
+        epoch_start = time.time()
 
         for batch_idx, batch in enumerate(train_loader):
             optimizer.zero_grad()
@@ -182,7 +245,7 @@ class DistilBERTPhishingDetector:
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
 
-            with torch.cuda.amp.autocast(enabled=self.mixed_precision):
+            with torch.amp.autocast("cuda", enabled=self.mixed_precision):
                 outputs = self.model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
@@ -196,9 +259,26 @@ class DistilBERTPhishingDetector:
             scaler.update()
             scheduler.step()
 
+            self._log_progress(
+                "train",
+                batch_idx,
+                total_batches,
+                total_loss,
+                epoch_start,
+                progress_offset,
+                progress_total,
+                progress_start_time,
+            )
+
         return total_loss / len(train_loader)
 
-    def evaluate(self, data_loader):
+    def evaluate(
+        self,
+        data_loader,
+        progress_offset=0,
+        progress_total=None,
+        progress_start_time=None,
+    ):
         """
         Evaluate the model.
 
@@ -212,18 +292,21 @@ class DistilBERTPhishingDetector:
         total_loss = 0
         all_predictions = []
         all_labels = []
+        total_batches = len(data_loader)
+        eval_start = time.time()
 
         with torch.no_grad():
-            for batch in data_loader:
+            for batch_idx, batch in enumerate(data_loader):
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
 
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels
-                )
+                with torch.amp.autocast("cuda", enabled=self.mixed_precision):
+                    outputs = self.model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels
+                    )
 
                 loss = outputs.loss
                 total_loss += loss.item()
@@ -231,6 +314,17 @@ class DistilBERTPhishingDetector:
                 predictions = torch.argmax(outputs.logits, dim=1)
                 all_predictions.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
+
+                self._log_progress(
+                    "eval",
+                    batch_idx,
+                    total_batches,
+                    total_loss,
+                    eval_start,
+                    progress_offset,
+                    progress_total,
+                    progress_start_time,
+                )
 
         avg_loss = total_loss / len(data_loader)
 
@@ -266,7 +360,7 @@ class DistilBERTPhishingDetector:
             num_warmup_steps=int(0.1 * total_steps),
             num_training_steps=total_steps
         )
-        scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision)
+        scaler = torch.amp.GradScaler("cuda", enabled=self.mixed_precision)
 
         # Training loop
         best_val_loss = float('inf')
@@ -275,16 +369,32 @@ class DistilBERTPhishingDetector:
         val_losses = []
 
         start_time = time.time()
+        progress_units_per_epoch = len(train_loader) + len(val_loader)
+        total_progress_units = progress_units_per_epoch * self.epochs
 
         for epoch in range(self.epochs):
             logger.info(f"\nEpoch {epoch + 1}/{self.epochs}")
+            epoch_progress_offset = epoch * progress_units_per_epoch
 
             # Train
-            train_loss = self.train_epoch(train_loader, optimizer, scheduler, scaler)
+            train_loss = self.train_epoch(
+                train_loader,
+                optimizer,
+                scheduler,
+                scaler,
+                progress_offset=epoch_progress_offset,
+                progress_total=total_progress_units,
+                progress_start_time=start_time,
+            )
             training_losses.append(train_loss)
 
             # Validate
-            val_loss, val_predictions, val_labels = self.evaluate(val_loader)
+            val_loss, val_predictions, val_labels = self.evaluate(
+                val_loader,
+                progress_offset=epoch_progress_offset + len(train_loader),
+                progress_total=total_progress_units,
+                progress_start_time=start_time,
+            )
             val_losses.append(val_loss)
 
             # Calculate validation accuracy
