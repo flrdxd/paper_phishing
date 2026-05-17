@@ -205,7 +205,7 @@ class DataAuditor:
             results['critical_issues'].append(error_msg)
             logger.error(f"  ❌ CRITICAL: {error_msg}")
         else:
-            min_count = min(label_counts.values())
+            min_count = label_counts.min()
             min_percentage = (min_count / total_samples) * 100
             if min_percentage < 10:
                 warning_msg = f"SEVERE CLASS IMBALANCE: Minority class is only {min_percentage:.2f}% of data"
