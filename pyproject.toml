@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phishing-detection"
+version = "0.1.0"
+description = "Phishing email detection with sklearn-first pipelines and optional transformers."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+phishing-check-setup = "phishing_detection.check_kaggle_setup:main"
+phishing-test-data-quality = "phishing_detection.data_quality_check:main"
+phishing-train-sklearn = "phishing_detection.main_sklearn_only:main"
+phishing-train-full = "phishing_detection.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

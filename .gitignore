@@ -123,6 +123,7 @@ phishing_detection_optimized.tar.gz
 phishing_detection*.tar.*
 
 # Generated files
+.artifacts/
 plots/
 results/
 temp/
