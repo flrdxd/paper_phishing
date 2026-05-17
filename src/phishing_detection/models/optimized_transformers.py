@@ -20,7 +20,6 @@ from transformers import (
     get_linear_schedule_with_warmup
 )
 from torch.optim import AdamW
-from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 import logging
@@ -103,7 +102,7 @@ class OptimizedBERT:
 
         # Memory management
         self.max_grad_norm = 1.0  # Gradient clipping
-        self.use_amp = True  # Mixed precision training
+        self.use_amp = torch.cuda.is_available()  # Mixed precision training
         self.gradient_checkpointing = False  # Can enable for more memory savings
         self.max_samples_per_class = 1000  # Default limit for balanced datasets
 
@@ -243,7 +242,7 @@ class OptimizedBERT:
             labels = batch['labels'].to(device)
 
             # Mixed precision forward pass
-            with autocast():
+            with torch.amp.autocast("cuda", enabled=self.use_amp):
                 outputs = self.model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
@@ -265,7 +264,7 @@ class OptimizedBERT:
                 total_loss += loss.item() * self.gradient_accumulation_steps
 
             # Memory management - clear cache periodically
-            if step % 50 == 0:
+            if torch.cuda.is_available() and step % 50 == 0:
                 torch.cuda.empty_cache()
 
         return total_loss / len(train_loader)
@@ -292,7 +291,7 @@ class OptimizedBERT:
         )
 
         # Mixed precision scaler
-        scaler = GradScaler()
+        scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
         # Training loop with advanced techniques
         best_val_loss = float('inf')
@@ -313,7 +312,7 @@ class OptimizedBERT:
                     attention_mask = batch['attention_mask'].to(device)
                     labels = batch['labels'].to(device)
 
-                    with autocast():
+                    with torch.amp.autocast("cuda", enabled=self.use_amp):
                         outputs = self.model(
                             input_ids=input_ids,
                             attention_mask=attention_mask,
@@ -374,7 +373,7 @@ class OptimizedBERT:
                 attention_mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
 
-                with autocast():
+                with torch.amp.autocast("cuda", enabled=self.use_amp):
                     outputs = self.model(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
