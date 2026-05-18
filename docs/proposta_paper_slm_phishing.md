@@ -762,36 +762,39 @@ Mitigações:
 - [x] Reproduzir BERT.
 - [x] Reproduzir DistilBERT.
 - [x] Comparar com Tabela IV do paper.
-- [ ] Registrar resultados finais em tabela no repositório.
+- [x] Registrar resultados finais em tabela no repositório.
+- [ ] Rodar novamente após validar ambiente Kaggle da máquina atual.
 
 ### Fase 2 - MeAJOR
 
-- [ ] Baixar versão reproduzível.
-- [ ] Auditar colunas, rótulos e fontes.
-- [ ] Criar split aleatório.
-- [ ] Criar split por fonte, se possível.
-- [ ] Rodar NB, LR, SVM, DistilBERT e MiniLM.
+- [x] Baixar versão reproduzível.
+- [x] Auditar colunas, rótulos e fontes.
+- [x] Criar split aleatório.
+- [x] Criar split por fonte, se possível.
+- [x] Rodar smoke test com NB/LR/SVM leves.
+- [ ] Rodar experimento completo com NB, LR e SVM.
+- [ ] Rodar DistilBERT e MiniLM.
 
 ### Fase 3 - URL/metadados
 
-- [ ] Implementar extrator de features de URL.
-- [ ] Implementar features de metadados disponíveis.
-- [ ] Rodar Logistic Regression, LightGBM e XGBoost.
+- [x] Implementar extrator de features de URL.
+- [x] Implementar features de metadados disponíveis.
+- [x] Rodar Logistic Regression com text-only, URL/meta-only e combinado.
 - [ ] Testar PhiUSIIL como benchmark tabular.
 
 ### Fase 4 - Fusão e calibração
 
-- [ ] Criar fusão por média ponderada.
-- [ ] Criar stacking com Logistic Regression.
-- [ ] Calibrar scores.
-- [ ] Otimizar threshold por FPR@Recall>=98%.
+- [x] Criar fusão por média ponderada.
+- [x] Criar stacking com Logistic Regression.
+- [x] Calibrar scores.
+- [x] Otimizar threshold por FPR@Recall>=98%.
 
 ### Fase 5 - Robustez e base rates
 
 - [ ] Auditar PhishFuzzer/E-PhishGen.
-- [ ] Criar avaliação AI-rewrite sanitizada.
-- [ ] Simular base rates.
-- [ ] Reportar FP/10k, FN/10k, custo/10k e latência.
+- [x] Criar avaliação controlada de rewrite sanitizada.
+- [x] Simular base rates.
+- [x] Reportar FP/10k, FN/10k e latência.
 
 ### Fase 6 - Teste final
 
