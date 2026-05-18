@@ -45,6 +45,7 @@ from phishing_detection.utils.results_exporter import (
     export_results_to_csv,
     export_all_formats
 )
+from phishing_detection.experiments.results import save_experiment_run
 
 # Set up logging with location-independent path
 log_file = os.path.join(PATHS['LOGS_DIR'], 'phishing_detection.log')
@@ -428,11 +429,98 @@ class PhishingDetectionPipeline:
         export_results_to_json(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.json'))
         export_results_to_csv(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.csv'))
         self.save_run_metadata()
+        self.save_registry_run()
 
         logger.info(f"\nAll results saved to {PATHS['RESULTS_DIR']}/")
         logger.info("  - results_summary.txt (human-readable)")
         logger.info("  - model_results.json (machine-readable)")
         logger.info("  - model_results.csv (spreadsheet-compatible)")
+
+    def save_registry_run(self):
+        """Save baseline metrics in the timestamped experiment registry."""
+        metric_rows = []
+        model_names = {
+            'naive_bayes': 'Naive Bayes',
+            'dandelion_nb': 'NB + Dandelion',
+            'bert': 'BERT',
+            'distilbert': 'DistilBERT',
+        }
+
+        for model_key, display_name in model_names.items():
+            if model_key not in self.results:
+                continue
+            row = self._baseline_metric_row(model_key, display_name, self.results[model_key])
+            metric_rows.append(row)
+
+        metadata = {
+            "dataset": "Paper Kaggle phishing email dataset",
+            "dataset_id": "naserabdullahalam/phishing-email-dataset",
+            "samples": "see dataset_metadata.json",
+            "split_policy": "paper reproduction: ML 70/30 stratified, transformers 80/20 stratified",
+            "random_state": self.random_state,
+            "max_features": self.max_features,
+            "total_time_seconds": self.total_time,
+            "paper": "Optimizing Phishing Detection: Comparative Analysis of Lightweight Machine Learning and Transformer Models",
+        }
+
+        output_paths = save_experiment_run(
+            experiment_name="baseline_paper",
+            results=metric_rows,
+            metadata=metadata,
+            command="python3 run.py train",
+            summary_title="Paper Baseline Reproduction",
+        )
+        logger.info(f"Baseline run registry saved: {output_paths['run_dir']}")
+
+    def _baseline_metric_row(self, model_key, display_name, metrics):
+        """Convert legacy baseline metrics to the shared metric schema."""
+        row = {
+            "model": display_name,
+            "model_key": model_key,
+            "accuracy": float(metrics.get("accuracy", 0)),
+            "precision": float(metrics.get("precision", 0)),
+            "recall": float(metrics.get("recall", 0)),
+            "f1_score": float(metrics.get("f1_score", 0)),
+            "training_time": float(metrics.get("training_time", 0) or 0),
+            "inference_time": float(metrics.get("inference_time", 0) or 0),
+            "auc_roc": metrics.get("auc_roc"),
+            "auc_pr": None,
+            "fpr_at_recall_98": None,
+        }
+
+        cm = metrics.get("confusion_matrix")
+        if cm is not None:
+            tn, fp, fn, tp = cm.ravel()
+            row.update({
+                "true_negatives": int(tn),
+                "false_positives": int(fp),
+                "false_negatives": int(fn),
+                "true_positives": int(tp),
+                "false_positive_rate": float(fp / (fp + tn)) if (fp + tn) else 0.0,
+                "false_negative_rate": float(fn / (fn + tp)) if (fn + tp) else 0.0,
+                "true_negative_rate": float(tn / (tn + fp)) if (tn + fp) else 0.0,
+                "mcc": self._mcc_from_confusion(tn, fp, fn, tp),
+            })
+        else:
+            row.update({
+                "true_negatives": None,
+                "false_positives": None,
+                "false_negatives": None,
+                "true_positives": None,
+                "false_positive_rate": None,
+                "false_negative_rate": None,
+                "true_negative_rate": None,
+                "mcc": None,
+            })
+
+        return row
+
+    @staticmethod
+    def _mcc_from_confusion(tn, fp, fn, tp):
+        denominator = (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)
+        if denominator == 0:
+            return 0.0
+        return float(((tp * tn) - (fp * fn)) / (denominator ** 0.5))
 
     def save_run_metadata(self):
         """Save run configuration and hardware metadata."""
