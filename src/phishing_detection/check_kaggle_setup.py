@@ -11,6 +11,8 @@ Newer versions (2.x) use different authentication methods.
 
 import sys
 import os
+import importlib.metadata
+import importlib.util
 from phishing_detection.path_config import PATHS
 
 def check_kaggle_setup():
@@ -21,13 +23,15 @@ def check_kaggle_setup():
 
     # Check 1: kaggle module
     print("\n[CHECK 1] Checking kaggle module...")
-    try:
-        import kaggle
+    if importlib.util.find_spec("kaggle") is not None:
         print("✓ kaggle module installed")
-        print(f"  Version: {kaggle.__version__ if hasattr(kaggle, '__version__') else 'unknown'}")
-    except ImportError:
+        try:
+            print(f"  Version: {importlib.metadata.version('kaggle')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  Version: unknown")
+    else:
         print("❌ kaggle module NOT installed")
-        print("  Install with: pip install kaggle")
+        print("  Install with: uv pip install -r requirements.txt")
         return False
 
     # Check 2: kagglehub module
@@ -42,9 +46,9 @@ def check_kaggle_setup():
 
     # Check 3: Kaggle credentials
     print("\n[CHECK 3] Checking Kaggle credentials...")
-    kaggle_json_path = os.path.expanduser("~/.kaggle/kaggle.json")
+    kaggle_json_path = find_kaggle_credentials()
 
-    if os.path.exists(kaggle_json_path):
+    if kaggle_json_path:
         print(f"✓ Kaggle credentials found at {kaggle_json_path}")
 
         # Check permissions
@@ -57,13 +61,15 @@ def check_kaggle_setup():
             print(f"  Fix with: chmod 600 ~/.kaggle/kaggle.json")
     else:
         print("❌ Kaggle credentials NOT found")
-        print(f"  Expected at: {kaggle_json_path}")
+        print("  Checked:")
+        for checked_path in kaggle_credential_candidates():
+            print(f"  - {checked_path}")
         print("\n  How to setup:")
         print("  1. Go to https://www.kaggle.com/settings")
         print("  2. Click 'Create New Token' in API section")
         print("  3. Download kaggle.json")
-        print("  4. Move to ~/.kaggle/kaggle.json")
-        print("  5. Set permissions: chmod 600 ~/.kaggle/kaggle.json")
+        print("  4. Move to ~/.kaggle/kaggle.json or ~/.config/kaggle/kaggle.json")
+        print("  5. Set permissions: chmod 600 <path-to-kaggle.json>")
         return False
 
     # Check 4: Test API connection
@@ -171,6 +177,9 @@ def check_project_setup():
     if 'VIRTUAL_ENV' in os.environ:
         print(f"✓ Virtual environment active")
         print(f"  Path: {os.environ['VIRTUAL_ENV']}")
+    elif sys.prefix != sys.base_prefix:
+        print("✓ Virtual environment active")
+        print(f"  Path: {sys.prefix}")
     else:
         print("⚠️  Virtual environment NOT active")
         print("  Activate with: source .venv/bin/activate")
@@ -209,6 +218,27 @@ def check_project_setup():
         return False
 
     return True
+
+
+def kaggle_credential_candidates():
+    """Return Kaggle credential paths supported by common API versions."""
+    candidates = []
+    config_dir = os.environ.get("KAGGLE_CONFIG_DIR")
+    if config_dir:
+        candidates.append(os.path.join(os.path.expanduser(config_dir), "kaggle.json"))
+    candidates.extend([
+        os.path.expanduser("~/.kaggle/kaggle.json"),
+        os.path.expanduser("~/.config/kaggle/kaggle.json"),
+    ])
+    return candidates
+
+
+def find_kaggle_credentials():
+    """Return the first existing Kaggle credential path, or None."""
+    for credential_path in kaggle_credential_candidates():
+        if os.path.exists(credential_path):
+            return credential_path
+    return None
 
 
 def main():
