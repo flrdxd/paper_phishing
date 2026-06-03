@@ -58,37 +58,36 @@ def monitor_resources(operation_name: str):
         operation_name: Name of the operation being monitored
 
     Yields:
-        dict: Resource usage metrics
+        dict: Resource usage metrics (will be updated with elapsed time after operation)
     """
     logger.info(f"Starting resource monitoring for: {operation_name}")
     start_time = time.time()
     start_resources = get_system_resources()
 
     resources_log = []
+    monitoring_data = {
+        "operation": operation_name,
+        "start_time": datetime.now().isoformat(),
+        "start_resources": start_resources,
+        "log": resources_log,
+    }
 
     try:
-        yield {
-            "operation": operation_name,
-            "start_time": datetime.now().isoformat(),
-            "start_resources": start_resources,
-            "log": resources_log,
-        }
+        yield monitoring_data
     finally:
         end_time = time.time()
         end_resources = get_system_resources()
         elapsed = end_time - start_time
 
-        summary = {
-            "operation": operation_name,
-            "start_time": datetime.fromtimestamp(start_time).isoformat(),
+        # Update the monitoring data with results
+        monitoring_data.update({
             "end_time": datetime.fromtimestamp(end_time).isoformat(),
             "elapsed_seconds": elapsed,
-            "start_resources": start_resources,
             "end_resources": end_resources,
             "resource_delta": {
                 k: end_resources.get(k, 0) - v for k, v in start_resources.items()
             } if start_resources and end_resources else {},
-        }
+        })
 
         logger.info(f"Resource monitoring complete for: {operation_name}")
         logger.info(f"  Elapsed time: {elapsed:.2f} seconds")

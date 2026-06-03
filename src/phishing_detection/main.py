@@ -189,11 +189,11 @@ class PhishingDetectionPipeline:
             "evaluation": eval_monitor,
         }
         metrics["resource_monitoring"] = {
-            "training_time": train_monitor["elapsed_seconds"],
-            "evaluation_time": eval_monitor["elapsed_seconds"],
+            "training_time": train_monitor.get("elapsed_seconds", 0),
+            "evaluation_time": eval_monitor.get("elapsed_seconds", 0),
             "peak_memory_gb": max(
-                train_monitor["end_resources"].get("memory_used_gb", 0),
-                eval_monitor["end_resources"].get("memory_used_gb", 0),
+                train_monitor.get("end_resources", {}).get("memory_used_gb", 0),
+                eval_monitor.get("end_resources", {}).get("memory_used_gb", 0),
             ),
         }
 
