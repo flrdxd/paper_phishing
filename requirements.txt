@@ -30,6 +30,9 @@ requests>=2.31.0
 # Serialization
 cloudpickle>=2.2.0
 
+# System Monitoring
+psutil>=5.9.0
+
 # Tests and local validation
 pytest>=8.0.0
 

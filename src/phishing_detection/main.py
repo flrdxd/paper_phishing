@@ -14,8 +14,10 @@ import os
 import time
 import json
 import platform
+import subprocess
 import pandas as pd
 import logging
+from datetime import datetime
 
 from phishing_detection.path_config import PATHS
 from phishing_detection.data_preprocessing import DataPreprocessor
@@ -45,7 +47,9 @@ from phishing_detection.utils.results_exporter import (
     export_results_to_csv,
     export_all_formats
 )
-from phishing_detection.experiments.results import save_experiment_run
+from phishing_detection.utils.resource_monitor import monitor_resources, get_system_resources
+from phishing_detection.utils.paper_comparison import compare_with_paper, format_comparison_table, get_paper_summary
+from phishing_detection.experiments.results import save_baseline_run, get_git_commit, get_hardware_metadata
 
 # Set up logging with location-independent path
 log_file = os.path.join(PATHS['LOGS_DIR'], 'phishing_detection.log')
@@ -77,6 +81,7 @@ class PhishingDetectionPipeline:
         self.models = {}
         self.results = {}
         self.total_time = None
+        self.resource_logs = {}  # Store resource monitoring data
 
     def load_and_preprocess_data(self, force_download=False):
         """
@@ -96,10 +101,22 @@ class PhishingDetectionPipeline:
         self.preprocessor = DataPreprocessor(max_features=self.max_features, random_state=self.random_state)
 
         # Download dataset
-        df = self.preprocessor.download_dataset(force_download=force_download)
+        with monitor_resources("dataset_download") as dl_monitor:
+            df = self.preprocessor.download_dataset(force_download=force_download)
+        self.resource_logs["dataset_download"] = dl_monitor
 
         # Preprocess data
-        df = self.preprocessor.preprocess_dataframe(df)
+        with monitor_resources("dataset_preprocessing") as prep_monitor:
+            df = self.preprocessor.preprocess_dataframe(df)
+        self.resource_logs["dataset_preprocessing"] = prep_monitor
+
+        # Store dataset size information
+        self.dataset_info = {
+            "total_samples": len(df),
+            "phishing_samples": int(df[df['label'] == 1].shape[0]),
+            "legitimate_samples": int(df[df['label'] == 0].shape[0]),
+            "columns": list(df.columns),
+        }
 
         # Plot dataset distribution
         plot_dataset_distribution(df, save_path=os.path.join(PATHS['PLOTS_DIR'], 'dataset_distribution.png'))
@@ -150,16 +167,47 @@ class PhishingDetectionPipeline:
         logger.info("PHASE 2A: TRAINING NAIVE BAYES MODEL")
         logger.info("="*60)
 
-        # Initialize and train model
+        # Initialize and train model with resource monitoring
         nb_detector = NaiveBayesPhishingDetector(alpha=1.0, fit_prior=True, random_state=self.random_state)
-        nb_detector.train(X_train, y_train)
 
-        # Evaluate model
-        metrics = nb_detector.evaluate(X_test, y_test)
+        with monitor_resources("naive_bayes_training") as train_monitor:
+            nb_detector.train(X_train, y_train)
+
+        # Evaluate model with resource monitoring
+        with monitor_resources("naive_bayes_evaluation") as eval_monitor:
+            metrics = nb_detector.evaluate(X_test, y_test)
 
         # Save model
         model_path = os.path.join(PATHS['MODELS_DIR'], 'naive_bayes_model.pkl')
         nb_detector.save_model(model_path)
+
+        # Store resource monitoring data
+        if not hasattr(self, 'resource_logs'):
+            self.resource_logs = {}
+        self.resource_logs["naive_bayes"] = {
+            "training": train_monitor,
+            "evaluation": eval_monitor,
+        }
+        metrics["resource_monitoring"] = {
+            "training_time": train_monitor["elapsed_seconds"],
+            "evaluation_time": eval_monitor["elapsed_seconds"],
+            "peak_memory_gb": max(
+                train_monitor["end_resources"].get("memory_used_gb", 0),
+                eval_monitor["end_resources"].get("memory_used_gb", 0),
+            ),
+        }
+
+        logger.info("\n" + "-"*50)
+        logger.info("NAIVE BAYES RESULTS")
+        logger.info("-"*50)
+        logger.info(f"Accuracy:  {metrics['accuracy']:.4f}")
+        logger.info(f"Precision: {metrics['precision']:.4f}")
+        logger.info(f"Recall:    {metrics['recall']:.4f}")
+        logger.info(f"F1-Score:  {metrics['f1_score']:.4f}")
+        logger.info(f"Training Time: {metrics['training_time']:.2f} seconds")
+        logger.info(f"Inference Time: {metrics['inference_time']:.4f} seconds")
+        logger.info(f"Peak Memory: {metrics['resource_monitoring']['peak_memory_gb']:.2f} GB")
+        logger.info("-"*50)
 
         logger.info("\n" + "-"*50)
         logger.info("NAIVE BAYES RESULTS")
@@ -170,6 +218,7 @@ class PhishingDetectionPipeline:
         logger.info(f"F1-Score:  {metrics['f1_score']:.4f}")
         logger.info(f"\nTraining Time:    {metrics['training_time']:.2f} seconds")
         logger.info(f"Inference Time:   {metrics['inference_time']:.2f} seconds")
+        logger.info(f"Peak Memory:      {metrics['resource_monitoring']['peak_memory_gb']:.2f} GB")
         logger.info("-"*50)
 
         self.models['naive_bayes'] = nb_detector
@@ -424,14 +473,15 @@ class PhishingDetectionPipeline:
         logger.info("PHASE 4: SAVING RESULTS")
         logger.info("="*60)
 
-        # Export to all formats
-        export_results_to_text(self.results, os.path.join(PATHS['RESULTS_DIR'], 'results_summary.txt'))
-        export_results_to_json(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.json'))
-        export_results_to_csv(self.results, os.path.join(PATHS['RESULTS_DIR'], 'model_results.csv'))
+        # Export to all formats (automatically saves to baseline/ subdirectory)
+        export_results_to_text(self.results)
+        export_results_to_json(self.results)
+        export_results_to_csv(self.results)
         self.save_run_metadata()
         self.save_registry_run()
 
-        logger.info(f"\nAll results saved to {PATHS['RESULTS_DIR']}/")
+        baseline_dir = os.path.join(PATHS['RESULTS_DIR'], 'baseline')
+        logger.info(f"\nAll baseline results saved to {baseline_dir}/")
         logger.info("  - results_summary.txt (human-readable)")
         logger.info("  - model_results.json (machine-readable)")
         logger.info("  - model_results.csv (spreadsheet-compatible)")
@@ -446,31 +496,83 @@ class PhishingDetectionPipeline:
             'distilbert': 'DistilBERT',
         }
 
+        # Compare with paper for each model
+        paper_comparisons = {}
         for model_key, display_name in model_names.items():
             if model_key not in self.results:
                 continue
             row = self._baseline_metric_row(model_key, display_name, self.results[model_key])
             metric_rows.append(row)
 
+            # Add paper comparison
+            comparison = compare_with_paper(model_key, self.results[model_key])
+            paper_comparisons[model_key] = comparison
+
+        # Enhanced metadata with all requested information
         metadata = {
-            "dataset": "Paper Kaggle phishing email dataset",
-            "dataset_id": "naserabdullahalam/phishing-email-dataset",
-            "samples": "see dataset_metadata.json",
-            "split_policy": "paper reproduction: ML 70/30 stratified, transformers 80/20 stratified",
-            "random_state": self.random_state,
-            "max_features": self.max_features,
-            "total_time_seconds": self.total_time,
-            "paper": "Optimizing Phishing Detection: Comparative Analysis of Lightweight Machine Learning and Transformer Models",
+            "execution": {
+                "start_time": self.resource_logs.get("dataset_download", {}).get("start_time", "unknown"),
+                "end_time": datetime.now().isoformat(),
+                "total_time_seconds": self.total_time,
+            },
+            "environment": {
+                "git_commit": get_git_commit() if get_git_commit else "unknown",
+                "platform": platform.platform(),
+                "python": platform.python_version(),
+            },
+            "hardware": get_hardware_metadata(),
+            "dataset": {
+                "name": "Paper Kaggle phishing email dataset",
+                "dataset_id": "naserabdullahalam/phishing-email-dataset",
+                "total_samples": self.dataset_info.get("total_samples", 0),
+                "phishing_samples": self.dataset_info.get("phishing_samples", 0),
+                "legitimate_samples": self.dataset_info.get("legitimate_samples", 0),
+                "class_balance": {
+                    "phishing_ratio": self.dataset_info.get("phishing_samples", 0) / self.dataset_info.get("total_samples", 1),
+                    "legitimate_ratio": self.dataset_info.get("legitimate_samples", 0) / self.dataset_info.get("total_samples", 1),
+                },
+            },
+            "split_policy": {
+                "ml_train_test": "70/30 stratified",
+                "transformer_train_test": "80/20 stratified",
+                "transformer_train_validation": "80/20 stratified from transformer training split",
+            },
+            "configuration": {
+                "random_state": self.random_state,
+                "max_features": self.max_features,
+            },
+            "paper_reference": {
+                "title": "Optimizing Phishing Detection: Comparative Analysis of Lightweight Machine Learning and Transformer Models",
+                "venue": "IEEE World Forum on Public Safety Technology (WF-PST)",
+                "year": 2025,
+            },
+            "paper_comparison": paper_comparisons,
+            "resource_monitoring": {
+                "dataset_download_time": self.resource_logs.get("dataset_download", {}).get("elapsed_seconds", 0),
+                "preprocessing_time": self.resource_logs.get("dataset_preprocessing", {}).get("elapsed_seconds", 0),
+                "model_training_times": {
+                    key: self.resource_logs.get(key, {}).get("training", {}).get("elapsed_seconds", 0)
+                    for key in model_names.keys() if key in self.resource_logs
+                },
+            },
         }
 
-        output_paths = save_experiment_run(
+        output_paths = save_baseline_run(
             experiment_name="baseline_paper",
             results=metric_rows,
             metadata=metadata,
             command="python3 run.py train",
             summary_title="Paper Baseline Reproduction",
         )
+
+        # Save paper comparison table
+        comparison_table = format_comparison_table(paper_comparisons)
+        comparison_path = os.path.join(output_paths['run_dir'], 'paper_comparison.md')
+        with open(comparison_path, 'w') as f:
+            f.write(comparison_table)
+
         logger.info(f"Baseline run registry saved: {output_paths['run_dir']}")
+        logger.info(f"Paper comparison saved: {comparison_path}")
 
     def _baseline_metric_row(self, model_key, display_name, metrics):
         """Convert legacy baseline metrics to the shared metric schema."""

@@ -98,14 +98,18 @@ def serialize_json_value(value: Any) -> Any:
     return value
 
 
-def save_experiment_run(
+def save_baseline_run(
     experiment_name: str,
     results: list[dict[str, Any]],
     metadata: dict[str, Any],
     command: str,
     summary_title: str,
 ) -> dict[str, str]:
-    """Save timestamped run files and update the aggregate metrics table."""
+    """Save baseline paper reproduction run WITHOUT adding to research aggregate table.
+
+    CRITICAL: Baseline results MUST NOT be mixed with research experiments (H1-H6).
+    This function saves only to the timestamped run directory, NOT to all_experiments_metrics.csv.
+    """
     metadata = dict(metadata)
     metadata.setdefault("git_commit", get_git_commit())
     metadata.setdefault("hardware", get_hardware_metadata())
@@ -137,6 +141,61 @@ def save_experiment_run(
     command_txt.write_text(command + "\n")
     summary_md.write_text(build_summary(summary_title, metric_rows, metadata))
 
+    # NOTE: NO aggregate_csv append - baseline stays separate from research experiments
+    return {
+        "run_dir": str(run_dir),
+        "metrics_csv": str(metrics_csv),
+        "metrics_json": str(metrics_json),
+        "metadata_json": str(metadata_json),
+        "command_txt": str(command_txt),
+        "summary_md": str(summary_md),
+    }
+
+
+def save_experiment_run(
+    experiment_name: str,
+    results: list[dict[str, Any]],
+    metadata: dict[str, Any],
+    command: str,
+    summary_title: str,
+) -> dict[str, str]:
+    """Save research experiment run and update the aggregate metrics table.
+
+    Use this function for H1-H6 research experiments only.
+    For H0 baseline reproduction, use save_baseline_run() instead.
+    """
+    metadata = dict(metadata)
+    metadata.setdefault("git_commit", get_git_commit())
+    metadata.setdefault("hardware", get_hardware_metadata())
+    metadata.setdefault("generated_at", datetime.now().isoformat())
+
+    dataset = str(metadata.get("dataset", "unknown"))
+    split_policy = str(metadata.get("split_policy", "unknown"))
+    random_state = int(metadata.get("random_state", 42))
+    metric_rows = normalize_metric_rows(
+        results=results,
+        experiment_name=experiment_name,
+        dataset=dataset,
+        split_policy=split_policy,
+        random_state=random_state,
+    )
+
+    run_dir = create_run_dir(experiment_name)
+    metrics_csv = run_dir / "metrics.csv"
+    metrics_json = run_dir / "metrics.json"
+    metadata_json = run_dir / "metadata.json"
+    command_txt = run_dir / "command.txt"
+    summary_md = run_dir / "summary.md"
+
+    pd.DataFrame(metric_rows).to_csv(metrics_csv, index=False)
+    with metrics_json.open("w") as file:
+        json.dump(serialize_json_value(metric_rows), file, indent=4)
+    with metadata_json.open("w") as file:
+        json.dump(serialize_json_value(metadata), file, indent=4)
+    command_txt.write_text(command + "\n")
+    summary_md.write_text(build_summary(summary_title, metric_rows, metadata))
+
+    # Research experiments ARE added to aggregate table
     aggregate_csv = append_aggregate_metrics(metric_rows)
     return {
         "run_dir": str(run_dir),

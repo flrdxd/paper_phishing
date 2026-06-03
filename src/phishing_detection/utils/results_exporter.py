@@ -26,7 +26,10 @@ def export_results_to_text(results, output_path=None):
         results: Dictionary of model results
         output_path: Path to save the text file
     """
-    output_path = output_path or os.path.join(PATHS['RESULTS_DIR'], 'results_summary.txt')
+    # Default to baseline-specific directory to avoid mixing with research experiments
+    baseline_dir = os.path.join(PATHS['RESULTS_DIR'], 'baseline')
+    os.makedirs(baseline_dir, exist_ok=True)
+    output_path = output_path or os.path.join(baseline_dir, 'results_summary.txt')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     with open(output_path, 'w') as f:
@@ -170,7 +173,10 @@ def export_results_to_json(results, output_path=None):
         results: Dictionary of model results
         output_path: Path to save the JSON file
     """
-    output_path = output_path or os.path.join(PATHS['RESULTS_DIR'], 'model_results.json')
+    # Default to baseline-specific directory to avoid mixing with research experiments
+    baseline_dir = os.path.join(PATHS['RESULTS_DIR'], 'baseline')
+    os.makedirs(baseline_dir, exist_ok=True)
+    output_path = output_path or os.path.join(baseline_dir, 'model_results.json')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     # Prepare results for JSON serialization
@@ -219,7 +225,10 @@ def export_results_to_csv(results, output_path=None):
         results: Dictionary of model results
         output_path: Path to save the CSV file
     """
-    output_path = output_path or os.path.join(PATHS['RESULTS_DIR'], 'model_results.csv')
+    # Default to baseline-specific directory to avoid mixing with research experiments
+    baseline_dir = os.path.join(PATHS['RESULTS_DIR'], 'baseline')
+    os.makedirs(baseline_dir, exist_ok=True)
+    output_path = output_path or os.path.join(baseline_dir, 'model_results.csv')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     model_names = {
