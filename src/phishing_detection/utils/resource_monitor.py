@@ -105,7 +105,9 @@ def monitor_resources(operation_name: str):
             "elapsed_seconds": elapsed,
             "end_resources": end_resources,
             "resource_delta": {
-                k: end_resources.get(k, 0) - v for k, v in start_resources.items()
+                k: float(end_resources.get(k, 0)) - float(v)
+                for k, v in start_resources.items()
+                if isinstance(end_resources.get(k, 0), (int, float))
             } if start_resources and end_resources else {},
         })
 
