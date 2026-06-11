@@ -160,15 +160,19 @@ def save_baseline_run(
             json.dump(serialize_json_value(resource_logs), file, indent=4)
 
     # NOTE: NO aggregate_csv append - baseline stays separate from research experiments
-    return {
+    return_dict = {
         "run_dir": str(run_dir),
         "metrics_csv": str(metrics_csv),
         "metrics_json": str(metrics_json),
         "metadata_json": str(metadata_json),
         "command_txt": str(command_txt),
         "summary_md": str(summary_md),
-        "resources_json": str(resources_json) if resource_logs else None,
     }
+
+    if resource_logs:
+        return_dict["resources_json"] = str(resources_json)
+
+    return return_dict
 
 
 def save_experiment_run(
@@ -230,16 +234,22 @@ def save_experiment_run(
 
     # Research experiments ARE added to aggregate table
     aggregate_csv = append_aggregate_metrics(metric_rows)
-    return {
+
+    # Build return dict - only include resources_json if resource_logs were provided
+    return_dict = {
         "run_dir": str(run_dir),
         "metrics_csv": str(metrics_csv),
         "metrics_json": str(metrics_json),
         "metadata_json": str(metadata_json),
         "command_txt": str(command_txt),
         "summary_md": str(summary_md),
-        "resources_json": str(resources_json) if resource_logs else None,
         "aggregate_csv": str(aggregate_csv),
     }
+
+    if resource_logs:
+        return_dict["resources_json"] = str(resources_json)
+
+    return return_dict
 
 
 def save_summary_table(experiment_name: str, rows: list[dict[str, Any]], filename: str) -> str:
@@ -373,15 +383,19 @@ def save_implementacao_run(
             json.dump(serialize_json_value(resource_logs), file, indent=4)
 
     # NOTE: NO aggregate_csv append - implementacao stays separate
-    return {
+    return_dict = {
         "run_dir": str(run_dir),
         "metrics_csv": str(metrics_csv),
         "metrics_json": str(metrics_json),
         "metadata_json": str(metadata_json),
         "command_txt": str(command_txt),
         "summary_md": str(summary_md),
-        "resources_json": str(resources_json) if resource_logs else None,
     }
+
+    if resource_logs:
+        return_dict["resources_json"] = str(resources_json)
+
+    return return_dict
 
 
 def _format_optional_float(value: Any) -> str:
