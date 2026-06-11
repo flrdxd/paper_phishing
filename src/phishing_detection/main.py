@@ -474,8 +474,8 @@ class PhishingDetectionPipeline:
         logger.info("="*60)
 
         # Export to all formats (automatically saves to baseline/ subdirectory)
-        export_results_to_text(self.results)
-        export_results_to_json(self.results)
+        export_results_to_text(self.results, resource_logs=self.resource_logs)
+        export_results_to_json(self.results, resource_logs=self.resource_logs)
         export_results_to_csv(self.results)
         self.save_run_metadata()
         self.save_registry_run()
@@ -563,6 +563,7 @@ class PhishingDetectionPipeline:
             metadata=metadata,
             command="python3 run.py train",
             summary_title="Paper Baseline Reproduction",
+            resource_logs=self.resource_logs,
         )
 
         # Save paper comparison table
@@ -625,7 +626,7 @@ class PhishingDetectionPipeline:
         return float(((tp * tn) - (fp * fn)) / (denominator ** 0.5))
 
     def save_run_metadata(self):
-        """Save run configuration and hardware metadata."""
+        """Save run configuration and hardware metadata with complete resource monitoring."""
         try:
             import torch
 
@@ -660,6 +661,7 @@ class PhishingDetectionPipeline:
                 "gpu_name": gpu_name,
             },
             "total_time_seconds": self.total_time,
+            "resource_monitoring": self.resource_logs,  # Include complete resource logs
         }
 
         output_path = os.path.join(PATHS['RESULTS_DIR'], 'run_metadata.json')

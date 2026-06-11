@@ -104,16 +104,24 @@ def save_baseline_run(
     metadata: dict[str, Any],
     command: str,
     summary_title: str,
+    resource_logs: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Save baseline paper reproduction run WITHOUT adding to research aggregate table.
 
     CRITICAL: Baseline results MUST NOT be mixed with research experiments (H1-H6).
     This function saves only to the timestamped run directory, NOT to all_experiments_metrics.csv.
+
+    Args:
+        resource_logs: Complete resource monitoring data including CPU, RAM, GPU metrics
     """
     metadata = dict(metadata)
     metadata.setdefault("git_commit", get_git_commit())
     metadata.setdefault("hardware", get_hardware_metadata())
     metadata.setdefault("generated_at", datetime.now().isoformat())
+
+    # Include resource monitoring in metadata
+    if resource_logs:
+        metadata["resource_monitoring"] = serialize_json_value(resource_logs)
 
     dataset = str(metadata.get("dataset", "unknown"))
     split_policy = str(metadata.get("split_policy", "unknown"))
@@ -126,12 +134,17 @@ def save_baseline_run(
         random_state=random_state,
     )
 
-    run_dir = create_run_dir(experiment_name)
+    # Save to baseline/ directory instead of runs/baseline_paper/
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(PATHS["RESULTS_DIR"]) / "baseline" / run_timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
     metrics_csv = run_dir / "metrics.csv"
     metrics_json = run_dir / "metrics.json"
     metadata_json = run_dir / "metadata.json"
     command_txt = run_dir / "command.txt"
     summary_md = run_dir / "summary.md"
+    resources_json = run_dir / "resource_monitoring.json"
 
     pd.DataFrame(metric_rows).to_csv(metrics_csv, index=False)
     with metrics_json.open("w") as file:
@@ -140,6 +153,11 @@ def save_baseline_run(
         json.dump(serialize_json_value(metadata), file, indent=4)
     command_txt.write_text(command + "\n")
     summary_md.write_text(build_summary(summary_title, metric_rows, metadata))
+
+    # Save complete resource monitoring data
+    if resource_logs:
+        with resources_json.open("w") as file:
+            json.dump(serialize_json_value(resource_logs), file, indent=4)
 
     # NOTE: NO aggregate_csv append - baseline stays separate from research experiments
     return {
@@ -149,6 +167,7 @@ def save_baseline_run(
         "metadata_json": str(metadata_json),
         "command_txt": str(command_txt),
         "summary_md": str(summary_md),
+        "resources_json": str(resources_json) if resource_logs else None,
     }
 
 
@@ -158,16 +177,24 @@ def save_experiment_run(
     metadata: dict[str, Any],
     command: str,
     summary_title: str,
+    resource_logs: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Save research experiment run and update the aggregate metrics table.
 
     Use this function for H1-H6 research experiments only.
     For H0 baseline reproduction, use save_baseline_run() instead.
+
+    Args:
+        resource_logs: Complete resource monitoring data including CPU, RAM, GPU metrics
     """
     metadata = dict(metadata)
     metadata.setdefault("git_commit", get_git_commit())
     metadata.setdefault("hardware", get_hardware_metadata())
     metadata.setdefault("generated_at", datetime.now().isoformat())
+
+    # Include resource monitoring in metadata
+    if resource_logs:
+        metadata["resource_monitoring"] = serialize_json_value(resource_logs)
 
     dataset = str(metadata.get("dataset", "unknown"))
     split_policy = str(metadata.get("split_policy", "unknown"))
@@ -186,6 +213,7 @@ def save_experiment_run(
     metadata_json = run_dir / "metadata.json"
     command_txt = run_dir / "command.txt"
     summary_md = run_dir / "summary.md"
+    resources_json = run_dir / "resource_monitoring.json"
 
     pd.DataFrame(metric_rows).to_csv(metrics_csv, index=False)
     with metrics_json.open("w") as file:
@@ -194,6 +222,11 @@ def save_experiment_run(
         json.dump(serialize_json_value(metadata), file, indent=4)
     command_txt.write_text(command + "\n")
     summary_md.write_text(build_summary(summary_title, metric_rows, metadata))
+
+    # Save complete resource monitoring data
+    if resource_logs:
+        with resources_json.open("w") as file:
+            json.dump(serialize_json_value(resource_logs), file, indent=4)
 
     # Research experiments ARE added to aggregate table
     aggregate_csv = append_aggregate_metrics(metric_rows)
@@ -204,6 +237,7 @@ def save_experiment_run(
         "metadata_json": str(metadata_json),
         "command_txt": str(command_txt),
         "summary_md": str(summary_md),
+        "resources_json": str(resources_json) if resource_logs else None,
         "aggregate_csv": str(aggregate_csv),
     }
 
@@ -275,6 +309,79 @@ def build_summary(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def save_implementacao_run(
+    experiment_name: str,
+    results: list[dict[str, Any]],
+    metadata: dict[str, Any],
+    command: str,
+    summary_title: str,
+    resource_logs: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Save improved implementation run separate from baseline and research.
+
+    Use this function for new implementations and improvements to the baseline code.
+    Results are saved to implementacao/ directory to track code improvements over time.
+
+    Args:
+        resource_logs: Complete resource monitoring data including CPU, RAM, GPU metrics
+    """
+    metadata = dict(metadata)
+    metadata.setdefault("git_commit", get_git_commit())
+    metadata.setdefault("hardware", get_hardware_metadata())
+    metadata.setdefault("generated_at", datetime.now().isoformat())
+
+    # Include resource monitoring in metadata
+    if resource_logs:
+        metadata["resource_monitoring"] = serialize_json_value(resource_logs)
+
+    dataset = str(metadata.get("dataset", "unknown"))
+    split_policy = str(metadata.get("split_policy", "unknown"))
+    random_state = int(metadata.get("random_state", 42))
+    metric_rows = normalize_metric_rows(
+        results=results,
+        experiment_name=experiment_name,
+        dataset=dataset,
+        split_policy=split_policy,
+        random_state=random_state,
+    )
+
+    # Save to implementacao/ directory
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(PATHS["RESULTS_DIR"]) / "implementacao" / run_timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics_csv = run_dir / "metrics.csv"
+    metrics_json = run_dir / "metrics.json"
+    metadata_json = run_dir / "metadata.json"
+    command_txt = run_dir / "command.txt"
+    summary_md = run_dir / "summary.md"
+    resources_json = run_dir / "resource_monitoring.json"
+
+    pd.DataFrame(metric_rows).to_csv(metrics_csv, index=False)
+    with metrics_json.open("w") as file:
+        json.dump(serialize_json_value(metric_rows), file, indent=4)
+    with metadata_json.open("w") as file:
+        json.dump(serialize_json_value(metadata), file, indent=4)
+    command_txt.write_text(command + "\n")
+    summary_md.write_text(build_summary(summary_title, metric_rows, metadata))
+
+    # Save complete resource monitoring data
+    if resource_logs:
+        with resources_json.open("w") as file:
+            json.dump(serialize_json_value(resource_logs), file, indent=4)
+
+    # NOTE: NO aggregate_csv append - implementacao stays separate
+    return {
+        "run_dir": str(run_dir),
+        "metrics_csv": str(metrics_csv),
+        "metrics_json": str(metrics_json),
+        "metadata_json": str(metadata_json),
+        "command_txt": str(command_txt),
+        "summary_md": str(summary_md),
+        "resources_json": str(resources_json) if resource_logs else None,
+    }
 
 
 def _format_optional_float(value: Any) -> str:

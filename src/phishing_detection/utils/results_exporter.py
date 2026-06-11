@@ -18,12 +18,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def export_results_to_text(results, output_path=None):
+def export_results_to_text(results, resource_logs=None, output_path=None):
     """
     Export model results to a human-readable text file.
 
     Args:
         results: Dictionary of model results
+        resource_logs: Complete resource monitoring data (optional)
         output_path: Path to save the text file
     """
     # Default to baseline-specific directory to avoid mixing with research experiments
@@ -162,15 +163,57 @@ def export_results_to_text(results, output_path=None):
         f.write("accuracy requirements and available computational resources.\n")
         f.write("="*80 + "\n")
 
+        # Resource Monitoring Section
+        if resource_logs:
+            f.write("\n" + "="*80 + "\n")
+            f.write("RESOURCE MONITORING DETAILS\n")
+            f.write("="*80 + "\n\n")
+
+            for operation_name, logs in resource_logs.items():
+                if not isinstance(logs, dict):
+                    continue
+
+                f.write(f"Operation: {operation_name.upper()}\n")
+                f.write("-"*80 + "\n")
+                f.write(f"Elapsed Time: {logs.get('elapsed_seconds', 0):.2f} seconds\n")
+                f.write(f"Start Time: {logs.get('start_time', 'unknown')}\n")
+                f.write(f"End Time: {logs.get('end_time', 'unknown')}\n\n")
+
+                # System Resources
+                start_res = logs.get('start_resources', {})
+                end_res = logs.get('end_resources', {})
+
+                if start_res and end_res:
+                    f.write("CPU Usage:\n")
+                    f.write(f"  Start: {start_res.get('cpu_percent', 0):.1f}%\n")
+                    f.write(f"  End:   {end_res.get('cpu_percent', 0):.1f}%\n\n")
+
+                    f.write("Memory Usage:\n")
+                    f.write(f"  Start: {start_res.get('memory_used_gb', 0):.2f} GB ({start_res.get('memory_percent', 0):.1f}%)\n")
+                    f.write(f"  End:   {end_res.get('memory_used_gb', 0):.2f} GB ({end_res.get('memory_percent', 0):.1f}%)\n")
+                    f.write(f"  Total: {start_res.get('memory_total_gb', 0):.2f} GB\n")
+                    f.write(f"  Available: {end_res.get('memory_available_gb', 0):.2f} GB\n\n")
+
+                    # GPU Resources
+                    if 'gpu_used_gb' in end_res:
+                        f.write("GPU Memory Usage:\n")
+                        f.write(f"  Start: {start_res.get('gpu_used_gb', 0):.2f} GB ({start_res.get('gpu_percent', 0):.1f}%)\n")
+                        f.write(f"  End:   {end_res.get('gpu_used_gb', 0):.2f} GB ({end_res.get('gpu_percent', 0):.1f}%)\n")
+                        f.write(f"  Total: {start_res.get('gpu_total_gb', 0):.2f} GB\n")
+                        f.write(f"  Reserved: {end_res.get('gpu_reserved_gb', 0):.2f} GB\n\n")
+
+                f.write("\n")
+
     logger.info(f"Results exported to {output_path}")
 
 
-def export_results_to_json(results, output_path=None):
+def export_results_to_json(results, resource_logs=None, output_path=None):
     """
     Export model results to JSON file.
 
     Args:
         results: Dictionary of model results
+        resource_logs: Complete resource monitoring data (optional)
         output_path: Path to save the JSON file
     """
     # Default to baseline-specific directory to avoid mixing with research experiments
@@ -204,12 +247,20 @@ def export_results_to_json(results, output_path=None):
         if 'fit_prior' in value:
             serializable_results[key]['fit_prior'] = bool(value['fit_prior'])
 
+        # Add resource monitoring data if available
+        if 'resource_monitoring' in value:
+            serializable_results[key]['resource_monitoring'] = value['resource_monitoring']
+
     # Add metadata
     serializable_results['metadata'] = {
         'generated_at': datetime.now().isoformat(),
         'paper': 'Optimizing Phishing Detection: Comparative Analysis of Lightweight Machine Learning and Transformer Models',
         'conference': 'IEEE World Forum on Public Safety Technology (WF-PST) 2025'
     }
+
+    # Add complete resource monitoring if provided
+    if resource_logs:
+        serializable_results['resource_monitoring'] = resource_logs
 
     with open(output_path, 'w') as f:
         json.dump(serializable_results, f, indent=4)
@@ -280,17 +331,18 @@ def export_results_to_csv(results, output_path=None):
     logger.info(f"Results exported to {output_path}")
 
 
-def export_all_formats(results):
+def export_all_formats(results, resource_logs=None):
     """
     Export results to all available formats.
 
     Args:
         results: Dictionary of model results
+        resource_logs: Complete resource monitoring data (optional)
     """
     logger.info("Exporting results to all formats...")
 
-    export_results_to_text(results)
-    export_results_to_json(results)
+    export_results_to_text(results, resource_logs=resource_logs)
+    export_results_to_json(results, resource_logs=resource_logs)
     export_results_to_csv(results)
 
     logger.info("All results exported successfully!")
