@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import psutil
 import logging
@@ -11,6 +12,9 @@ from functools import wraps
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+# Get the CUDA_VISIBLE_DEVICES setting to understand GPU mapping
+CUDA_VISIBLE_DEVICES = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
 
 def get_system_resources() -> dict[str, Any]:
@@ -31,18 +35,34 @@ def get_system_resources() -> dict[str, Any]:
         try:
             import torch
             if torch.cuda.is_available():
-                gpu_memory_allocated = torch.cuda.memory_allocated() / (1024**3)
-                gpu_memory_reserved = torch.cuda.memory_reserved() / (1024**3)
+                gpu_count = torch.cuda.device_count()
+
+                # Monitor only GPU 0 (the first visible GPU after CUDA_VISIBLE_DEVICES filtering)
+                # If CUDA_VISIBLE_DEVICES=7, then torch.cuda.device_count()=1 and GPU 0 is actually physical GPU 7
+                gpu_memory_allocated = torch.cuda.memory_allocated(0) / (1024**3)
+                gpu_memory_reserved = torch.cuda.memory_reserved(0) / (1024**3)
                 gpu_memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
 
-                resources.update({
+                gpu_resources = {
                     "gpu_used_gb": gpu_memory_allocated,
                     "gpu_reserved_gb": gpu_memory_reserved,
                     "gpu_total_gb": gpu_memory_total,
                     "gpu_percent": (gpu_memory_allocated / gpu_memory_total) * 100,
-                })
-        except Exception:
-            pass
+                }
+
+                # Add GPU identification info
+                gpu_resources["gpu_id"] = 0  # Local GPU ID (always 0 after filtering)
+                gpu_resources["gpu_name"] = torch.cuda.get_device_name(0)
+                gpu_resources["gpu_count_visible"] = gpu_count
+
+                # Track original GPU mapping if CUDA_VISIBLE_DEVICES is set
+                if CUDA_VISIBLE_DEVICES:
+                    gpu_resources["cuda_visible_devices"] = CUDA_VISIBLE_DEVICES
+                    gpu_resources["original_gpu_mapping"] = f"Local GPU {0} → Physical GPU {CUDA_VISIBLE_DEVICES.split(',')[0]}"
+
+                resources.update(gpu_resources)
+        except Exception as e:
+            logger.debug(f"Failed to get GPU resources: {e}")
 
         return resources
     except Exception as e:
